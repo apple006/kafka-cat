@@ -86,12 +86,15 @@ static int connect_leader_broker(char *topic, int part_id) {
 }
 
 static int random_connect_broker() {
-    int port;
-    char *ipport, host[16], *p;;
+    int port, rand_idx = 0;
+    char *ipport, host[16], *p;
 
     if (conf.broker_count <= 0 || !conf.broker_list) return K_ERR; 
 
-    ipport = conf.broker_list[0];
+    if (conf.broker_count > 1) {
+        rand_idx = rand() % conf.broker_count;
+    }
+    ipport = conf.broker_list[rand_idx];
     p = memchr(ipport, ':', strlen(ipport));
     memcpy(host, ipport, p - ipport);
     host[p - ipport] = '\0';
@@ -119,6 +122,7 @@ int send_metadata_request(const char *topics) {
 
     if (send_request(cfd, metadata_req) != K_OK) goto cleanup;
     meta_resp = wait_response(cfd);
+    dump_metadata(meta_resp); 
     parse_and_store_metadata(meta_resp);
     dealloc_buffer(meta_resp);
     ret = K_OK;

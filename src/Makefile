@@ -1,7 +1,7 @@
 UNAME=$(shell uname)
 
 CFLAGS=-Wall -Wextra -Wno-unused-parameter -g
-PROG_NAME = kafkacat
+PROG_NAME = kafka-cat
 
 ifeq ($(UNAME), Darwin)
 LDFLAGS=-Wl,-flat_namespace,-undefined,dynamic_lookup

@@ -225,6 +225,14 @@ int get_buffer_unread(struct buffer *buf) {
     return buf->used - buf->pos;
 }
 
+int get_buffer_pos(struct buffer *buf) {
+    return buf->pos;
+}
+
+void reset_buffer_pos(struct buffer *buf, int pos) {
+    buf->pos = pos;
+}
+
 uint32_t get_buffer_crc32(struct buffer *buf) {
     return crc32(0, buf->data, buf->used);
 }

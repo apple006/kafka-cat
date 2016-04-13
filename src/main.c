@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <errno.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include "conn.h"
@@ -15,6 +16,7 @@ int main(int argc, char **argv) {
     int ch;
     char *broker_list = NULL;
 
+    srand(time(0));
     while((ch = getopt(argc, argv, "b:chv")) != -1) {
         switch(ch) {
             case 'b': broker_list = strdup(optarg); break;
@@ -35,6 +37,7 @@ int main(int argc, char **argv) {
     init_metadata_cache(&cache);
 
     char *topics = "sync_file";
+    send_metadata_request(topics);
     send_produce_request(topics, 0, "test_key", "test_value");
     send_fetch_request(topics, 0, 0, 50);
 

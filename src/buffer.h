@@ -34,4 +34,6 @@ char *get_buffer_data(struct buffer *buf);
 void need_expand(struct buffer *buf, int need_bytes); 
 uint32_t get_buffer_crc32(struct buffer *buf);
 int get_buffer_unread(struct buffer *buf); 
+void reset_buffer_pos(struct buffer *buf, int pos);
+int get_buffer_pos(struct buffer *buf);
 #endif
