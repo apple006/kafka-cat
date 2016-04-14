@@ -7,6 +7,10 @@ ifeq ($(UNAME), Darwin)
 LDFLAGS=-Wl,-flat_namespace,-undefined,dynamic_lookup
 endif
 
+INSTALL=/usr/bin/install
+INSTALLDIR=/usr/local
+BINDIR=$(INSTALLDIR)/bin
+
 objs = crc32.o buffer.o conn.o request.o response.o main.o metadata.o util.o cJSON/cJSON.o
 
 $(PROG_NAME): $(objs)	
@@ -25,3 +29,6 @@ util.o: util.c util.h
 clean:
 	rm -f $(PROG_NAME) *.o
 	cd cJSON && make clean && cd ..
+install:
+	mkdir -p $(BINDIR)
+	$(INSTALL) $(PROG_NAME) $(BINDIR)
