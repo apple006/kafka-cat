@@ -5,8 +5,8 @@
 ### install
 
 ```
-root$ cd kafka-cat/src
-root$ sudo make && make install
+$ cd kafka-cat/src
+$ sudo make && make install
 ```
 
 ### usage
