@@ -75,11 +75,25 @@ void free_split_res(char **tokens, int count) {
     free(tokens);
 }
 
+void set_loglevel_by_string(const char *level) {
+    int len;
+    
+    len = strlen(level);
+    if (strlen("debug") == len && !memcmp("debug", level, len)) {
+        log_level = DEBUG;
+    } else if (strlen("info") == len && !memcmp("info", level, len)) {
+        log_level = INFO;
+    } else if (strlen("warn") == len && !memcmp("warn", level, len)) {
+        log_level = WARN;
+    } else if (strlen("error") == len && !memcmp("error", level, len)) {
+        log_level = ERROR;
+    }
+}
+
 void
 set_log_level(enum LEVEL level) {
     log_level  = level;
-}
-
+} 
 void
 set_log_file(char *filename)
 {

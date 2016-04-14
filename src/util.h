@@ -31,6 +31,7 @@ enum LEVEL {
 void logger(enum LEVEL loglevel, char *fmt, ...);
 void set_log_file(char *filename);
 void set_log_level(enum LEVEL level);
+void set_loglevel_by_string(const char *level); 
 
 char **split_string(const char *s, int len, const char *sep, int seplen, int *count);
 void free_split_res(char **tokens, int count); 

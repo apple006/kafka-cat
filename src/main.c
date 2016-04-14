@@ -114,7 +114,10 @@ int main(int argc, char **argv) {
 
     init_conf(client_id, brokers);
     cache = alloc_metadata_cache();
-    set_log_level(DEBUG);
+    set_log_level(INFO);
+    if (log_level) {
+        set_loglevel_by_string(log_level);
+    }
     if (signal(SIGPIPE, sig_handler) == SIG_ERR) {
         logger(ERROR, "can't catch SIGPIPE.");
     }
