@@ -2,7 +2,9 @@
 #include <errno.h>
 #include <time.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
+#include <signal.h>
 #include "conn.h"
 #include "request.h"
 #include "buffer.h"
@@ -130,6 +132,7 @@ int main(int argc, char **argv) {
     } else {
         TIME_START();
         ret = send_metadata_request(topic, 1);
+        TIME_END();
         logger(INFO, "Total time cost %lldus in fetch metadata requst", TIME_COST());
     }
 
@@ -146,4 +149,5 @@ int main(int argc, char **argv) {
 
     deinit_conf();
     dealloc_metadata_cache(cache);
+    return 0;
 }

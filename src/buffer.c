@@ -52,7 +52,7 @@ int8_t read_int8_buffer(struct buffer *buf) {
     int8_t i8;
     assert(buf->pos + 1 <= buf->used);
 
-    i8 = (int8_t) buf->data[buf->pos++];
+    i8 = (int8_t)buf->data[buf->pos++];
     return i8;
 }
 
@@ -60,8 +60,8 @@ int16_t read_int16_buffer(struct buffer *buf) {
     int16_t i16 = 0;
     assert(buf->pos + 2 <= buf->used);
 
-    i16 |= buf->data[buf->pos++] << 8;
-    i16 |= buf->data[buf->pos++] & 0xff;
+    i16 |= (uint8_t)buf->data[buf->pos++] << 8;
+    i16 |= (uint8_t)buf->data[buf->pos++] & 0xff;
     return i16;
 }
 
@@ -69,10 +69,10 @@ int32_t read_int32_buffer(struct buffer *buf) {
     int32_t i32 = 0;
     assert(buf->pos + 4 <= buf->used);
 
-    i32 |= buf->data[buf->pos++] << 24;
-    i32 |= buf->data[buf->pos++] << 16;
-    i32 |= buf->data[buf->pos++] << 8;
-    i32 |= buf->data[buf->pos++] & 0xff;
+    i32 |= (uint8_t)buf->data[buf->pos++] << 24;
+    i32 |= (uint8_t)buf->data[buf->pos++] << 16;
+    i32 |= (uint8_t)buf->data[buf->pos++] << 8;
+    i32 |= (uint8_t)buf->data[buf->pos++] & 0xff;
     return i32;
 }
 
@@ -82,9 +82,9 @@ int64_t read_int64_buffer(struct buffer *buf) {
     assert(buf->pos + 8 <= buf->used);
 
     for (i = 0; i < 7; i++) {
-        i64 |= buf->data[buf->pos++] << ((7-i)*8);
+        i64 |= (uint8_t)buf->data[buf->pos++] << ((7-i)*8);
     }
-    i64 |= buf->data[buf->pos++] & 0xff;
+    i64 |= (uint8_t)buf->data[buf->pos++] & 0xff;
     return i64;
 }
 

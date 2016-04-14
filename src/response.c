@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <errno.h>
 #include "response.h"
 #include "metadata.h"
 #include "main.h"
 #include "conn.h"
 #include "util.h"
+#include "error_map.h"
 #include "cJSON/cJSON.h"
 
 struct client_config conf;
@@ -62,7 +64,7 @@ err_cleanup:
 
 static cJSON *parse_message_set(struct buffer *response) {
     int size, key_size, value_size;
-    int64_t offset;
+    long offset;
     char *key, *value;
     cJSON *messages, *message_obj;
 
@@ -79,6 +81,7 @@ static cJSON *parse_message_set(struct buffer *response) {
             break;
         }
         message_obj = cJSON_CreateObject();
+        printf("offset:%ld\n", offset);
         cJSON_AddNumberToObject(message_obj, "offset", offset);
         cJSON_AddNumberToObject(message_obj, "size", size);
         skip_buffer_bytes(response, 4 + 1 + 1); //skip crc + magic + attr
@@ -130,6 +133,9 @@ void dump_fetch_response(struct buffer *response) {
             total_bytes = read_int32_buffer(response);
             messages_obj = parse_message_set(response);
             cJSON_AddNumberToObject(part_obj, "err_code", err_code);
+            if (err_code > 0) {
+                cJSON_AddStringToObject(part_obj, "err_msg", err_map[err_code]);
+            }
             cJSON_AddNumberToObject(part_obj, "part_id", part_id);
             cJSON_AddNumberToObject(part_obj, "high_water", hw);
             cJSON_AddNumberToObject(part_obj, "total_bytes", total_bytes);
@@ -173,6 +179,9 @@ void dump_produce_response(struct buffer *response) {
             err_code = read_int16_buffer(response);
             offset = read_int64_buffer(response);
             cJSON_AddNumberToObject(part_obj, "err_code", err_code);
+            if (err_code > 0) {
+                cJSON_AddStringToObject(part_obj, "err_msg", err_map[err_code]);
+            }
             cJSON_AddNumberToObject(part_obj, "part_id", part_id);
             cJSON_AddNumberToObject(part_obj, "offset", offset);
             cJSON_AddItemToArray(parts, part_obj);
@@ -222,10 +231,13 @@ cJSON *parse_topic_metadata(struct buffer *resp) {
     topic = read_short_string_buffer(resp);
     part_count = read_int32_buffer(resp);
     cJSON_AddNumberToObject(topic_obj, "err_code", err_code);
+    if (err_code > 0) {
+        cJSON_AddStringToObject(topic_obj, "err_msg", err_map[err_code]);
+    }
     cJSON_AddStringToObject(topic_obj, "name", topic);
 
     parts = cJSON_CreateArray();
-    cJSON_AddItemToArray(topic_obj, parts);
+    cJSON_AddItemToObject(topic_obj, "partitions",parts);
     if (part_count == 0) return topic_obj;
 
     for(i = 0; i < part_count; i++) {
@@ -233,6 +245,12 @@ cJSON *parse_topic_metadata(struct buffer *resp) {
         err_code = read_int16_buffer(resp);
         part_id = read_int32_buffer(resp);
         leader_id = read_int32_buffer(resp);
+        cJSON_AddNumberToObject(part_obj, "err_code", err_code);
+        if (err_code > 0) {
+            cJSON_AddStringToObject(topic_obj, "err_msg", err_map[err_code]);
+        }
+        cJSON_AddNumberToObject(part_obj, "part_id", part_id);
+        cJSON_AddNumberToObject(part_obj, "leader_id", leader_id);
         replica_count = read_int32_buffer(resp);
         replicas = malloc(replica_count * sizeof(int));
         for (j = 0; j < replica_count; j++) {
@@ -279,8 +297,7 @@ void dump_metadata(struct buffer *response) {
 }
 
 void parse_and_store_metadata(struct buffer *response) {
-    int i, j, k, old_pos, broker_count, metadata_count, part_count;
-    short err_code;
+    int i, j, k, old_pos, broker_count, metadata_count, part_count, err_code;
     char *topic;
     struct broker_metadata *b_meta;
     struct metadata_cache *cache;
@@ -311,6 +328,7 @@ void parse_and_store_metadata(struct buffer *response) {
             p_meta = alloc_partition_metadata(); 
             t_meta->part_metas[i] = p_meta;
             err_code = read_int16_buffer(response); 
+            p_meta->err_code = err_code;
             p_meta->part_id = read_int32_buffer(response);
             p_meta->leader_id = read_int32_buffer(response);
             p_meta->replica_count = read_int32_buffer(response);

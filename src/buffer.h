@@ -1,6 +1,6 @@
 #ifndef _BUFFER_H_
 #define _BUFFER_H_
-#include <unistd.h>
+#include <stdint.h>
 
 struct buffer {
     int cap;

@@ -1,6 +1,7 @@
 #ifndef _METADATA_H_
 #define _METADATA_H_
 struct partition_metadata {
+    int err_code;
     int part_id;
     int leader_id;
     int replica_count;

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+ #include <unistd.h>
 #include "buffer.h"
 #include "util.h"
 #include "request.h"

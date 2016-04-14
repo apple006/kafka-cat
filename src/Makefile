@@ -10,7 +10,7 @@ endif
 objs = crc32.o buffer.o conn.o request.o response.o main.o metadata.o util.o cJSON/cJSON.o
 
 $(PROG_NAME): $(objs)	
-	gcc -o $(PROG_NAME) $(objs)
+	gcc -o $(PROG_NAME) $(objs) -lm
 
 buffer.o: buffer.c crc32.h buffer.h
 conn.o: conn.c conn.h
@@ -24,3 +24,4 @@ util.o: util.c util.h
 
 clean:
 	rm -f $(PROG_NAME) *.o
+	cd cJSON && make clean && cd ..
