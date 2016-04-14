@@ -67,14 +67,14 @@ int connect_server(char *ip, int port) {
     
     TIME_START();
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        logger(DEBUG, "make socket() error!");
+        logger(DEBUG, "make socket() [%s:%d] error!", ip, port);
         return -1;
     }
     memset(&srv_addr, 0, sizeof(struct sockaddr_in));
     srv_addr.sin_family = AF_INET;
     srv_addr.sin_port = htons(port);
     if (inet_pton(AF_INET, ip, &srv_addr.sin_addr) <= 0) {
-        logger(DEBUG, "inet_pton() error!");
+        logger(DEBUG, "inet_pton() [%s:%d] error!", ip, port);
         return -1;
     }
 
@@ -82,20 +82,20 @@ int connect_server(char *ip, int port) {
     set_sock_flags(sockfd, O_NONBLOCK);
     rc = connect(sockfd, (struct sockaddr*)&srv_addr, sizeof(srv_addr));
     if ((rc == -1) && (errno != EINPROGRESS)) {
-        logger(DEBUG, "connect server error!");
+        logger(DEBUG, "connect server[%s:%d] error!", ip, port);
         close(sockfd);
         return -1;
     }
     rc = wait_socket_data(sockfd, 3000, CR_WRITE);
     if (rc == -1) {
-        logger(DEBUG, "connect server error!");
+        logger(DEBUG, "connect server[%s:%d] error!", ip, port);
         goto cleanup;
     } else if (rc == 0) {
-        logger(DEBUG, "connect server timeout!");
+        logger(DEBUG, "connect server[%s:%d] timeout!", ip, port);
         goto cleanup;
     }
     TIME_END();
-    logger(DEBUG, "Total time cost %lldus in connect to server.", TIME_COST());
+    logger(DEBUG, "Total time cost %lldus in connect to server[%s:%d].", TIME_COST(), ip, port);
     return sockfd;
 
 cleanup:
