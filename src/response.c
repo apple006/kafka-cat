@@ -106,6 +106,45 @@ static cJSON *parse_message_set(struct buffer *response) {
     return messages;
 }
 
+void dump_offsets_response(struct buffer *response) {
+    int i, j, k, old_pos, topic_count, part_count;
+    int err_code, part_id, num_offsets;
+    long long offsets;
+    char *topic;
+
+    if (!response) {
+        logger(ERROR, "response is null.");
+    }
+    old_pos = get_buffer_pos(response);
+    // corelation id
+    read_int32_buffer(response);
+    topic_count = read_int32_buffer(response);
+    for (i = 0; i < topic_count; i++) {
+        topic = read_short_string_buffer(response);
+        printf("{ topic: %s, partitions: \n\t[\n", topic);
+        part_count = read_int32_buffer(response);
+        for(j = 0; j < part_count; j++) {
+            part_id = read_int32_buffer(response);
+            err_code = read_int16_buffer(response);
+            num_offsets = read_int32_buffer(response);
+            printf("\t\t{ part_id:%d, err_code:%d, offsets: [", part_id, err_code);
+            for (k = 0; k < num_offsets; k++) {
+                offsets = read_int64_buffer(response);
+                if(k == num_offsets-1) {
+                    printf("%lld", offsets);
+                } else {
+                    printf("%lld, ", offsets);
+                }
+            }
+            printf("] }\n");
+        }
+        printf("\t]\n}\n");
+        free(topic);
+    }
+
+    reset_buffer_pos(response, old_pos);
+}
+
 void dump_fetch_response(struct buffer *response) {
     int i, j, part_count, topic_count;
     int part_id, err_code, hw, total_bytes, old_pos;
@@ -113,9 +152,12 @@ void dump_fetch_response(struct buffer *response) {
     cJSON *root, *topic_obj, *part_obj, *parts, *topics;
     cJSON *messages_obj;
 
-    // correlation id
+    if (!response) {
+        logger(ERROR, "response is null.");
+    }
     old_pos = get_buffer_pos(response);
     root = cJSON_CreateObject();
+    // corelation id
     cJSON_AddNumberToObject(root, "corelation_id",read_int32_buffer(response));
     topics = cJSON_CreateArray();
     topic_count = read_int32_buffer(response);
@@ -162,6 +204,9 @@ void dump_produce_response(struct buffer *response) {
     char *topic, *json_str;
     cJSON *root, *topic_obj, *part_obj, *parts, *topics;
 
+    if (!response) {
+        logger(ERROR, "response is null.");
+    }
     old_pos = get_buffer_pos(response);
     root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "corelation_id",read_int32_buffer(response));
@@ -277,6 +322,9 @@ void dump_metadata(struct buffer *response) {
     cJSON *root, *topics, *topic_obj;
     char *json_str;
 
+    if (!response) {
+        logger(ERROR, "response is null.");
+    }
     old_pos = get_buffer_pos(response);
     root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "corelation_id",read_int32_buffer(response));

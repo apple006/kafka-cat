@@ -227,6 +227,34 @@ cleanup:
     return K_OK;
 }
 
+int send_offsets_request(char *topic, int part_id, int64_t timestamp, int max_num_offsets) {
+    int cfd;
+    struct buffer *offsets_req, *offsets_resp;
+
+    // connect to leader
+    cfd = connect_leader_broker(topic, part_id);
+    if (cfd <= 0) return K_ERR;
+
+    offsets_req = alloc_request_buffer(OFFSET_KEY); // request key
+    write_int32_buffer(offsets_req, -1); // replica id
+    write_int32_buffer(offsets_req, 1); // topic count
+    write_short_string_buffer(offsets_req, topic, strlen(topic)); // topic
+    write_int32_buffer(offsets_req, 1); // partition count
+    write_int32_buffer(offsets_req, part_id); // partition id 
+    write_int64_buffer(offsets_req, timestamp); // timestamp
+    write_int32_buffer(offsets_req, max_num_offsets); // max num offsets
+
+    if(send_request(cfd, offsets_req) != K_OK) goto cleanup;
+    offsets_resp = wait_response(cfd);
+    dump_offsets_response(offsets_resp);
+    dealloc_buffer(offsets_resp);
+
+cleanup:
+    close(cfd);
+    dealloc_buffer(offsets_req);
+    return K_OK;
+}
+
 int send_fetch_request(char *topic, int part_id, int64_t offset, int fetch_size) {
     int cfd;
     struct client_config *conf;

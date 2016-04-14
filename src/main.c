@@ -52,11 +52,13 @@ static void usage(const char *prog_name) {
     fprintf(stderr, "Usage: %s\n", prog_name);
     fprintf(stderr, "\t-b broker list, like localhost:9092.\n");
     fprintf(stderr, "\t-t topic name.\n");
+    fprintf(stderr, "\t-T offsets timestamp, -1 = LATEST, -2 = EARLIEST.\n");
     fprintf(stderr, "\t-c client id.\n");
     fprintf(stderr, "\t-C consumer mode.\n");
     fprintf(stderr, "\t-p partition id.\n");
     fprintf(stderr, "\t-P producer mode.\n");
     fprintf(stderr, "\t-o consumer offset.\n");
+    fprintf(stderr, "\t-O fetch offsets.\n");
     fprintf(stderr, "\t-f consumer fetch size.\n");
     fprintf(stderr, "\t-k produce message key.\n");
     fprintf(stderr, "\t-v produce message value.\n");
@@ -70,23 +72,26 @@ void sig_handler(int signo)
 }
 
 int main(int argc, char **argv) {
-    int ch, part_id = 0, offset = 0, is_consumer = 0, is_producer = 0;
+    int ch, part_id = 0, offset = 0, is_consumer = 0, is_producer = 0, is_offsets = 0;
     int fetch_size = 0, show_usage = 0, ret;
-    char *topic = NULL, *key = NULL, *value = NULL;
+    int ts = -1;
+    char *topic = NULL, *key = NULL, *value = NULL, *type;
     char *brokers = NULL;
     char *client_id = NULL;
     char *log_level = NULL;
 
     srand(time(0));
-    while((ch = getopt(argc, argv, "b:t:c:Cp:Po:f:k:v:l:h")) != -1) {
+    while((ch = getopt(argc, argv, "b:t:T:c:Cp:Po:Of:k:v:l:h")) != -1) {
         switch(ch) {
             case 'b': brokers = strdup(optarg); break;
             case 't': topic = strdup(optarg); break;
+            case 'T': ts = atoi(optarg); break;
             case 'c': client_id = strdup(optarg); break;
             case 'C': is_consumer = 1; break;
             case 'P': is_producer = 1; break;
             case 'p': part_id = atoi(optarg); break;
             case 'o': offset = atoi(optarg); break;
+            case 'O': is_offsets = 1; break;
             case 'f': fetch_size = atoi(optarg); break;
             case 'k': key = strdup(optarg); break;
             case 'v': value = strdup(optarg); break;
@@ -122,22 +127,22 @@ int main(int argc, char **argv) {
         logger(ERROR, "can't catch SIGPIPE.");
     }
     if (fetch_size <= 0) fetch_size = 1024;
+    TIME_START();
     if (is_consumer) {
-        TIME_START();
         ret = send_fetch_request(topic, part_id, offset, fetch_size);
-        TIME_END();
-        logger(INFO, "Total time cost %lldus in fetch requst", TIME_COST());
+        type = "consumer";
+    } else if(is_offsets) {
+        ret = send_offsets_request(topic, part_id, ts, 1);
+        type = "offsets";
     } else if(is_producer) {
-        TIME_START();
         ret = send_produce_request(topic, part_id, key, value);
-        TIME_END();
-        logger(INFO, "Total time cost %lldus in produce requst", TIME_COST());
+        type = "producer";
     } else {
-        TIME_START();
         ret = send_metadata_request(topic, 1);
-        TIME_END();
-        logger(INFO, "Total time cost %lldus in fetch metadata requst", TIME_COST());
+        type = "metadata";
     }
+    TIME_END();
+    logger(INFO, "Total time cost %lldus in %s requst", TIME_COST(), type);
 
     if (ret == K_OK) {
         logger(INFO, "Send request success!\n");

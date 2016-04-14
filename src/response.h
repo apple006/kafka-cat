@@ -7,6 +7,7 @@
 struct buffer *wait_response(int cfd);
 void parse_and_store_metadata(struct buffer *response);
 void dump_fetch_response(struct buffer *response);
+void dump_offsets_response(struct buffer *response);
 void dump_produce_response(struct buffer *response);
 void dump_metadata(struct buffer *response);
 #endif
