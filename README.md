@@ -1,4 +1,4 @@
-## kafka-cat
+# kafka-cat [![Build Status](https://img.shields.io/badge/license-MIT-blue.svg)](http://opensource.org/licenses/MIT)
 
 实现部分 kafka 协议, 快速定位 broker 是否可以读写。 fetch, produce 以及 获取 metadata 的耗时
 
