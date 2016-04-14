@@ -24,5 +24,7 @@
 *.x86_64
 *.hex
 *.DS_STORE
+*.swp
+*.swo
 tags
 kafka-cat
