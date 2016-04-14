@@ -14,13 +14,12 @@ struct client_config {
     short required_acks;
     int ack_timeout;
 };
-
-extern struct client_config conf;
-extern struct metadata_cache cache;
-
 struct message {
     long offset;
     char *key;
     char *value;
 };
+
+struct client_config *get_conf(); 
+struct metadata_cache *get_metacache();
 #endif

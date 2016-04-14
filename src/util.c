@@ -1,6 +1,13 @@
+#include <time.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include "util.h"
+
+static char *log_file = NULL;
+static enum LEVEL log_level = INFO;
+
 // This function was copied from redis/sds.c
 char **split_string(const char *s, int len, const char *sep, int seplen, int *count) {
     int elements = 0, slots = 5, start = 0, j;
@@ -66,4 +73,55 @@ void free_split_res(char **tokens, int count) {
     while(count--)
         free(tokens[count]);
     free(tokens);
+}
+
+void
+set_log_level(enum LEVEL level) {
+    log_level  = level;
+}
+
+void
+set_log_file(char *filename)
+{
+    log_file = filename;
+}
+
+void
+logger(enum LEVEL loglevel,char *fmt, ...)
+{
+    FILE *fp;
+    va_list ap;
+    time_t now;
+    char buf[4096];
+    char t_buf[64];
+    char *msg = NULL;
+    const char *color = "";
+
+    if(loglevel < log_level) {
+        return;
+    }
+
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    switch(loglevel) {
+        case DEBUG: msg = "DEBUG"; break;
+        case INFO:  msg = "INFO";  color = C_YELLOW ; break;
+        case WARN:  msg = "WARN";  color = C_PURPLE; break;
+        case ERROR: msg = "ERROR"; color = C_RED; break;
+    }
+
+    now = time(NULL);
+    strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&now));
+    fp = (log_file == NULL) ? stdout : fopen(log_file,"a");
+    if(log_file) {
+        fprintf(fp, "[%s] [%s] %s\n", t_buf, msg, buf);
+        fclose(fp);
+    } else {
+        fprintf(fp, "%s[%s] [%s] %s"C_NONE"\n", color, t_buf, msg, buf);
+    }
+
+    if(loglevel >= ERROR) {
+        exit(1);
+    }
 }

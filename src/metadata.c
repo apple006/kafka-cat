@@ -3,17 +3,42 @@
 #include <string.h>
 #include "metadata.h"
 
-void init_metadata_cache(struct metadata_cache *cache) {
+struct metadata_cache *alloc_metadata_cache() {
+    struct metadata_cache *cache;
+    cache = malloc(sizeof(*cache));
+
     cache->broker_count = 0;
     cache->broker_metas = NULL;
     cache->topic_count = 0;
     cache->topic_metas = NULL;
+    return cache;
+}
+
+void dealloc_metadata_cache(struct metadata_cache *cache) {
+    int i;
+    struct broker_metadata *b_meta;
+    struct topic_metadata *cur, *next;
+
+    for (i = 0; i < cache->broker_count; i++) {
+        b_meta = &cache->broker_metas[i];
+        if (b_meta->host) free(b_meta->host);
+    }
+    free(cache->broker_metas);
+    
+    cur = cache->topic_metas;
+    while(cur) {
+        next = cur->next;
+        dealloc_topic_metadata(cur);
+        cur = next;
+    }
+
+    free(cache);
 }
 
 struct broker_metadata *get_broker_metadata(struct metadata_cache *cache, int id) {
     int i;
-    if (cache->broker_count <= 0) return NULL;
 
+    if (cache->broker_count <= 0) return NULL;
     for (i = 0; i < cache->broker_count; i++) {
         if (cache->broker_metas[i].id == id) {
             return &cache->broker_metas[i]; 

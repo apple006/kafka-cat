@@ -20,7 +20,7 @@ typedef enum {
     HEARTBEAT_KEY
 } RequestId;
 
-int send_metadata_request(const char *topics);
+int send_metadata_request(const char *topics, int is_dump);
 int send_fetch_request(char *topic, int part_id, int64_t offset, int fetch_size);
 int send_produce_request(char *topic, int part_id, const char *key, const char *value);
 #endif

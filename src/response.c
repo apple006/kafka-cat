@@ -1,13 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 #include "response.h"
 #include "metadata.h"
 #include "main.h"
 #include "conn.h"
+#include "util.h"
 #include "cJSON/cJSON.h"
 
-struct metadata_cache cache;
 struct client_config conf;
 
 struct buffer *wait_response(int cfd) {
@@ -15,16 +16,21 @@ struct buffer *wait_response(int cfd) {
     struct buffer *response;
 
     rc = wait_socket_data(cfd, 3000, CR_READ);
-    if (rc <= 0) return NULL; // timeout or error
+    if (rc <= 0) { // timeout or error
+       logger(DEBUG, "wait response error, as %s!", strerror(errno));
+        return NULL;
+    }
 
     response = alloc_buffer(128);
     remain = get_buffer_cap(response);
+    TIME_START();
     while (rbytes < 4) {
         r = read(cfd, get_buffer_data(response) + rbytes, remain);
         if (r <= 0) {
             if (r == -1 &&
                    (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)) continue;
             if (r == 0) close(cfd);
+            logger(DEBUG, "wait response error, as %s!", strerror(errno));
             goto err_cleanup;
         }
         rbytes += r;
@@ -39,11 +45,14 @@ struct buffer *wait_response(int cfd) {
             if (r == -1 &&
                    (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)) continue;
             if (r == 0) close(cfd);
+            logger(DEBUG, "wait response error, as %s!", strerror(errno));
             goto err_cleanup;
         }
         rbytes += r;
         incr_buffer_used(response, r);
     }
+    TIME_END();
+    logger(DEBUG, "Total time cost %lldus in wait response", TIME_COST());
     return response;
 
 err_cleanup:
@@ -230,7 +239,6 @@ cJSON *parse_topic_metadata(struct buffer *resp) {
             replicas[j] = read_int32_buffer(resp); 
         }
         cJSON_AddItemToObject(part_obj, "replicas", cJSON_CreateIntArray(replicas, replica_count));
-        free(replicas);
         isr_count = read_int32_buffer(resp);
         isr = malloc(isr_count * sizeof(int));
         for (j = 0; j < isr_count; j++) {
@@ -239,6 +247,10 @@ cJSON *parse_topic_metadata(struct buffer *resp) {
         cJSON_AddItemToObject(part_obj, "isr", cJSON_CreateIntArray(replicas, replica_count));
         cJSON_AddItemToArray(parts, part_obj);
     }
+
+    free(topic);
+    free(replicas);
+    free(isr);
     return topic_obj;
 }
 
@@ -271,13 +283,15 @@ void parse_and_store_metadata(struct buffer *response) {
     short err_code;
     char *topic;
     struct broker_metadata *b_meta;
+    struct metadata_cache *cache;
 
     old_pos = get_buffer_pos(response);
     read_int32_buffer(response); // ignore correlation id
     broker_count = read_int32_buffer(response);
-    update_broker_metadata(&cache, broker_count);
+    cache = get_metacache();
+    update_broker_metadata(cache, broker_count);
     for(i = 0; i < broker_count; i++) {
-        b_meta = &cache.broker_metas[i]; 
+        b_meta = &cache->broker_metas[i]; 
         b_meta->id = read_int32_buffer(response);
         b_meta->host = read_short_string_buffer(response);
         b_meta->port = read_int32_buffer(response);
@@ -289,10 +303,10 @@ void parse_and_store_metadata(struct buffer *response) {
         topic = read_short_string_buffer(response);
         part_count = read_int32_buffer(response);
         if (part_count == 0) continue;
-        delete_topic_metadata_from_cache(&cache, topic);
+        delete_topic_metadata_from_cache(cache, topic);
         struct topic_metadata *t_meta;
         struct partition_metadata* p_meta;
-        t_meta = add_topic_metadata_to_cache(&cache, topic, part_count);
+        t_meta = add_topic_metadata_to_cache(cache, topic, part_count);
         for(j = 0; j < part_count; j++) {
             p_meta = alloc_partition_metadata(); 
             t_meta->part_metas[i] = p_meta;

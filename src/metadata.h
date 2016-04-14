@@ -30,7 +30,8 @@ struct metadata_cache {
     struct topic_metadata *topic_metas;
 };
 
-void init_metadata_cache(struct metadata_cache *cache);
+struct metadata_cache *alloc_metadata_cache();
+void dealloc_metadata_cache(struct metadata_cache *cache);
 int update_broker_metadata(struct metadata_cache *cache, int broker_count);
 struct broker_metadata *get_broker_metadata(struct metadata_cache *cache, int id); 
 struct topic_metadata *get_topic_metadata_from_cache(struct metadata_cache *cache, const char *topic);
