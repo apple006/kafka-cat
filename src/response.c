@@ -374,7 +374,7 @@ void parse_and_store_metadata(struct buffer *response) {
         t_meta = add_topic_metadata_to_cache(cache, topic, part_count);
         for(j = 0; j < part_count; j++) {
             p_meta = alloc_partition_metadata(); 
-            t_meta->part_metas[i] = p_meta;
+            t_meta->part_metas[j] = p_meta;
             err_code = read_int16_buffer(response); 
             p_meta->err_code = err_code;
             p_meta->part_id = read_int32_buffer(response);
