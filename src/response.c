@@ -309,11 +309,11 @@ cJSON *parse_topic_metadata(struct buffer *resp) {
         }
         cJSON_AddItemToObject(part_obj, "isr", cJSON_CreateIntArray(replicas, replica_count));
         cJSON_AddItemToArray(parts, part_obj);
+        free(replicas);
+        free(isr);
     }
 
     free(topic);
-    free(replicas);
-    free(isr);
     return topic_obj;
 }
 
