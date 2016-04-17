@@ -79,7 +79,7 @@ struct topic_metadata *get_topic_metadata(const char *topic) {
     return t_meta;
 }
 
-static int connect_leader_broker(char *topic, int part_id) {
+static int connect_leader_broker(const char *topic, int part_id) {
     int leader_id;
     struct topic_metadata *t_meta;
     struct broker_metadata *b_meta;
@@ -189,7 +189,31 @@ static struct buffer *gen_message_buffer(const char *key, const char *value) {
     return msg_buf;
 }
 
-struct response *send_produce_request(char *topic, int part_id, const char *key, const char *value) {
+int64_t get_newest_offset(const char *topic, int part_id) {
+    int i, ret = 0;
+    struct response *r;
+    struct topic_info *t_info;
+    struct offsets_part_info *p_info = NULL;
+
+    r = send_offsets_request(topic, part_id, -1, 1);
+    
+    if (!r || r->topic_count <= 0) return 0;
+    for (i = 0; i < r->topic_count; i++) {
+        t_info = &r->t_infos[i];
+        if (strlen(topic) == strlen(t_info->name)
+            && strncmp(topic, t_info->name, strlen(topic)) == 0
+            && t_info->part_count > part_id) {
+            p_info = &t_info->p_infos[part_id];
+            break;
+        }
+    }
+    if(p_info && p_info->offset_count > 0) {
+        ret = p_info->offsets[0] - 1;
+    }
+    return ret;
+}
+
+struct response *send_produce_request(const char *topic, int part_id, const char *key, const char *value) {
     int cfd, messageset_size = 0;
     int key_size, value_size, message_size;
     struct client_config *conf;
@@ -232,7 +256,7 @@ cleanup:
     return r;
 }
 
-struct response *send_offsets_request(char *topic, int part_id, int64_t timestamp, int max_num_offsets) {
+struct response *send_offsets_request(const char *topic, int part_id, int64_t timestamp, int max_num_offsets) {
     int cfd;
     struct buffer *req, *resp_buf;
     struct response *r = NULL;
@@ -261,7 +285,7 @@ cleanup:
     return r;
 }
 
-struct response *send_fetch_request(char *topic, int part_id, int64_t offset, int fetch_size) {
+struct response *send_fetch_request(const char *topic, int part_id, int64_t offset, int fetch_size) {
     int cfd;
     struct client_config *conf;
     struct buffer *req, *resp_buf;
@@ -270,6 +294,7 @@ struct response *send_fetch_request(char *topic, int part_id, int64_t offset, in
     // connect to leader
     cfd = connect_leader_broker(topic, part_id);
     if (cfd <= 0) return NULL;
+    if (offset <= 0) offset = get_newest_offset(topic, part_id);
 
     conf = get_conf();
     req = alloc_request_buffer(FETCH_KEY); // request key

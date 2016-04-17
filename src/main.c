@@ -73,7 +73,7 @@ void sig_handler(int signo)
 }
 
 int main(int argc, char **argv) {
-    int ch, part_id = 0, offset = 0, is_consumer = 0, is_producer = 0, is_offsets = 0;
+    int ch, part_id = 0, offset = -1, is_consumer = 0, is_producer = 0, is_offsets = 0;
     int fetch_size = 0, show_usage = 0;
     int ts = -1;
     char *topic = NULL, *key = NULL, *value = NULL, *type;

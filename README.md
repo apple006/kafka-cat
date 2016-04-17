@@ -14,11 +14,13 @@ $ sudo make && make install
 Usage: ./kafka-cat
     -b broker list, like localhost:9092.
     -t topic name.
+    -T offsets timestamp, -1 = LATEST, -2 = EARLIEST.
     -c client id.
     -C consumer mode.
     -p partition id.
     -P producer mode.
     -o consumer offset.
+    -O fetch offsets.
     -f consumer fetch size.
     -k produce message key.
     -v produce message value.

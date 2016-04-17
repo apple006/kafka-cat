@@ -22,7 +22,7 @@ typedef enum {
 
 void dump_metadata(const char *topics);
 int send_metadata_request(const char *topics, int is_dump);
-struct response *send_offsets_request(char *topic, int part_id, int64_t timestamp, int max_num_offsets); 
-struct response *send_fetch_request(char *topic, int part_id, int64_t offset, int fetch_size);
-struct response *send_produce_request(char *topic, int part_id, const char *key, const char *value);
+struct response *send_offsets_request(const char *topic, int part_id, int64_t timestamp, int max_num_offsets); 
+struct response *send_fetch_request(const char *topic, int part_id, int64_t offset, int fetch_size);
+struct response *send_produce_request(const char *topic, int part_id, const char *key, const char *value);
 #endif
