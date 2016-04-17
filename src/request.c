@@ -190,26 +190,31 @@ static struct buffer *gen_message_buffer(const char *key, const char *value) {
 }
 
 int64_t get_newest_offset(const char *topic, int part_id) {
-    int i, ret = 0;
+    int i, j, ret = 0;
     struct response *r;
     struct topic_info *t_info;
     struct offsets_part_info *p_info = NULL;
 
     r = send_offsets_request(topic, part_id, -1, 1);
-    
-    if (!r || r->topic_count <= 0) return 0;
+    if (!r || r->topic_count <= 0) goto RET;
     for (i = 0; i < r->topic_count; i++) {
         t_info = &r->t_infos[i];
         if (strlen(topic) == strlen(t_info->name)
-            && strncmp(topic, t_info->name, strlen(topic)) == 0
-            && t_info->part_count > part_id) {
-            p_info = &t_info->p_infos[part_id];
+            && strncmp(topic, t_info->name, strlen(topic)) == 0) {
+            for (j = 0; j < t_info->part_count; j++) {
+                p_info = &t_info->p_infos[j];
+                if (p_info && p_info->part_id == part_id
+                    && p_info->offset_count > 0) {
+                    ret = p_info->offsets[0] - 1;
+                    goto RET;
+                }
+            }
             break;
         }
     }
-    if(p_info && p_info->offset_count > 0) {
-        ret = p_info->offsets[0] - 1;
-    }
+
+RET:
+    dealloc_response(r, OFFSET_KEY);
     return ret;
 }
 
@@ -294,7 +299,7 @@ struct response *send_fetch_request(const char *topic, int part_id, int64_t offs
     // connect to leader
     cfd = connect_leader_broker(topic, part_id);
     if (cfd <= 0) return NULL;
-    if (offset <= 0) offset = get_newest_offset(topic, part_id);
+    if (offset < 0) offset = get_newest_offset(topic, part_id);
 
     conf = get_conf();
     req = alloc_request_buffer(FETCH_KEY); // request key
