@@ -138,10 +138,14 @@ static int random_connect_broker() {
     return connect_server(host, port);
 }
 
+void dump_metadata(const char *topics) {
+    send_metadata_request(topics, 1);
+}
+
 int send_metadata_request(const char *topics, int is_dump) {
     int i, count, cfd, ret = K_ERR;
     char **topic_arr;
-    struct buffer *metadata_req, *meta_resp;
+    struct buffer *req, *meta_resp;
 
     if (!topics) return K_ERR;
     if ((cfd = random_connect_broker()) <= 0) {
@@ -149,17 +153,17 @@ int send_metadata_request(const char *topics, int is_dump) {
         return K_ERR;
     }
 
-    metadata_req = alloc_request_buffer(METADATA_KEY);
+    req = alloc_request_buffer(METADATA_KEY);
     topic_arr = split_string(topics, strlen(topics), ",", 1, &count);
-    write_int32_buffer(metadata_req, count);
+    write_int32_buffer(req, count);
     for (i = 0; i < count; i++) {
-        write_short_string_buffer(metadata_req, topic_arr[i], strlen(topic_arr[i])); 
+        write_short_string_buffer(req, topic_arr[i], strlen(topic_arr[i])); 
     }
 
-    if (send_request(cfd, metadata_req) != K_OK) goto cleanup;
+    if (send_request(cfd, req) != K_OK) goto cleanup;
     meta_resp = wait_response(cfd);
     if (is_dump) {
-        dump_metadata(meta_resp); 
+        dump_metadata_response(meta_resp); 
     } else {
         parse_and_store_metadata(meta_resp);
     }
@@ -168,7 +172,7 @@ int send_metadata_request(const char *topics, int is_dump) {
 
 cleanup:
     close(cfd);
-    dealloc_buffer(metadata_req);
+    dealloc_buffer(req);
     free_split_res(topic_arr, count);
     return ret;
 }
@@ -185,104 +189,107 @@ static struct buffer *gen_message_buffer(const char *key, const char *value) {
     return msg_buf;
 }
 
-int send_produce_request(char *topic, int part_id, const char *key, const char *value) {
+struct response *send_produce_request(char *topic, int part_id, const char *key, const char *value) {
     int cfd, messageset_size = 0;
     int key_size, value_size, message_size;
     struct client_config *conf;
-    struct buffer *produce_req, *msg_buf, *produce_resp;
+    struct buffer *req, *msg_buf, *resp_buf;
+    struct response *r = NULL;
 
     cfd = connect_leader_broker(topic, part_id);
-    if (cfd <= 0) return K_ERR;
+    if (cfd <= 0) return NULL;
 
     conf = get_conf();
     msg_buf = gen_message_buffer(key, value); // construct message body
-    produce_req = alloc_request_buffer(PRODUCE_KEY); // request type
-    write_int16_buffer(produce_req, conf->required_acks); // required_acks
-    write_int32_buffer(produce_req, conf->ack_timeout); // ack_timeout
-    write_int32_buffer(produce_req, 1); // topic count
-    write_short_string_buffer(produce_req, topic, strlen(topic)); // topic
-    write_int32_buffer(produce_req, 1); // partition count
-    write_int32_buffer(produce_req, part_id); // partition id
+    req = alloc_request_buffer(PRODUCE_KEY); // request type
+    write_int16_buffer(req, conf->required_acks); // required_acks
+    write_int32_buffer(req, conf->ack_timeout); // ack_timeout
+    write_int32_buffer(req, 1); // topic count
+    write_short_string_buffer(req, topic, strlen(topic)); // topic
+    write_int32_buffer(req, 1); // partition count
+    write_int32_buffer(req, part_id); // partition id
     key_size = key ? strlen(key) : 0;
     value_size = value ? strlen(value) : 0;
     // crc(4bytes) + magic (1byte) + attr (1byte) + key + value
     message_size = 4 + 1 + 1 + key_size + 4 + value_size + 4;
     messageset_size = message_size + MSG_OVERHEAD;
-    write_int32_buffer(produce_req, messageset_size); // message set size
-    write_int64_buffer(produce_req, 0); // offset
-    write_int32_buffer(produce_req, message_size); // message size
-    write_int32_buffer(produce_req, get_buffer_crc32(msg_buf)); // crc
-    write_raw_string_buffer(produce_req, get_buffer_data(msg_buf), get_buffer_used(msg_buf)); // message body
+    write_int32_buffer(req, messageset_size); // message set size
+    write_int64_buffer(req, 0); // offset
+    write_int32_buffer(req, message_size); // message size
+    write_int32_buffer(req, get_buffer_crc32(msg_buf)); // crc
+    write_raw_string_buffer(req, get_buffer_data(msg_buf), get_buffer_used(msg_buf)); // message body
 
-    if (send_request(cfd, produce_req) == K_ERR) goto cleanup;
+    if (send_request(cfd, req) == K_ERR) goto cleanup;
     if (conf->required_acks == 0) goto cleanup; // do nothing when required_acks = 0
-    produce_resp = wait_response(cfd);
-    dump_produce_response(produce_resp);
-    dealloc_buffer(produce_resp);
+    resp_buf = wait_response(cfd);
+    r = parse_response(resp_buf, PRODUCE_KEY);
+    dealloc_buffer(resp_buf);
 
 cleanup:
     close(cfd);
     dealloc_buffer(msg_buf);
-    dealloc_buffer(produce_req);
-    return K_OK;
+    dealloc_buffer(req);
+    return r;
 }
 
-int send_offsets_request(char *topic, int part_id, int64_t timestamp, int max_num_offsets) {
+struct response *send_offsets_request(char *topic, int part_id, int64_t timestamp, int max_num_offsets) {
     int cfd;
-    struct buffer *offsets_req, *offsets_resp;
+    struct buffer *req, *resp_buf;
+    struct response *r = NULL;
 
     // connect to leader
     cfd = connect_leader_broker(topic, part_id);
-    if (cfd <= 0) return K_ERR;
+    if (cfd <= 0) return NULL;
 
-    offsets_req = alloc_request_buffer(OFFSET_KEY); // request key
-    write_int32_buffer(offsets_req, -1); // replica id
-    write_int32_buffer(offsets_req, 1); // topic count
-    write_short_string_buffer(offsets_req, topic, strlen(topic)); // topic
-    write_int32_buffer(offsets_req, 1); // partition count
-    write_int32_buffer(offsets_req, part_id); // partition id 
-    write_int64_buffer(offsets_req, timestamp); // timestamp
-    write_int32_buffer(offsets_req, max_num_offsets); // max num offsets
+    req = alloc_request_buffer(OFFSET_KEY); // request key
+    write_int32_buffer(req, -1); // replica id
+    write_int32_buffer(req, 1); // topic count
+    write_short_string_buffer(req, topic, strlen(topic)); // topic
+    write_int32_buffer(req, 1); // partition count
+    write_int32_buffer(req, part_id); // partition id 
+    write_int64_buffer(req, timestamp); // timestamp
+    write_int32_buffer(req, max_num_offsets); // max num offsets
 
-    if(send_request(cfd, offsets_req) != K_OK) goto cleanup;
-    offsets_resp = wait_response(cfd);
-    dump_offsets_response(offsets_resp);
-    dealloc_buffer(offsets_resp);
+    if(send_request(cfd, req) != K_OK) goto cleanup;
+    resp_buf = wait_response(cfd);
+    r = parse_response(resp_buf, OFFSET_KEY); 
+    dealloc_buffer(resp_buf);
 
 cleanup:
     close(cfd);
-    dealloc_buffer(offsets_req);
-    return K_OK;
+    dealloc_buffer(req);
+    return r;
 }
 
-int send_fetch_request(char *topic, int part_id, int64_t offset, int fetch_size) {
+struct response *send_fetch_request(char *topic, int part_id, int64_t offset, int fetch_size) {
     int cfd;
     struct client_config *conf;
-    struct buffer *fetch_req, *fetch_resp;
+    struct buffer *req, *resp_buf;
+    struct response *r = NULL;
 
     // connect to leader
     cfd = connect_leader_broker(topic, part_id);
-    if (cfd <= 0) return K_ERR;
+    if (cfd <= 0) return NULL;
 
     conf = get_conf();
-    fetch_req = alloc_request_buffer(FETCH_KEY); // request key
-    write_int32_buffer(fetch_req, -1); // replica id
-    write_int32_buffer(fetch_req, conf->max_wait); // max wait
-    write_int32_buffer(fetch_req, conf->min_bytes); // min bytes
-    write_int32_buffer(fetch_req, 1); // topic count
-    write_short_string_buffer(fetch_req, topic, strlen(topic)); // topic
-    write_int32_buffer(fetch_req, 1); // partition count
-    write_int32_buffer(fetch_req, part_id); // partition id
-    write_int64_buffer(fetch_req, offset); // offset
-    write_int32_buffer(fetch_req, fetch_size); // fetch siz3
+    req = alloc_request_buffer(FETCH_KEY); // request key
+    write_int32_buffer(req, -1); // replica id
+    write_int32_buffer(req, conf->max_wait); // max wait
+    write_int32_buffer(req, conf->min_bytes); // min bytes
+    write_int32_buffer(req, 1); // topic count
+    write_short_string_buffer(req, topic, strlen(topic)); // topic
+    write_int32_buffer(req, 1); // partition count
+    write_int32_buffer(req, part_id); // partition id
+    write_int64_buffer(req, offset); // offset
+    write_int32_buffer(req, fetch_size); // fetch siz3
 
-    if(send_request(cfd, fetch_req) != K_OK) goto cleanup;
-    fetch_resp = wait_response(cfd);
-    dump_fetch_response(fetch_resp);
-    dealloc_buffer(fetch_resp);
+    if(send_request(cfd, req) != K_OK) goto cleanup;
+    resp_buf = wait_response(cfd);
+    r = parse_response(resp_buf, FETCH_KEY);
+    dealloc_buffer(resp_buf);
 
 cleanup:
     close(cfd);
-    dealloc_buffer(fetch_req);
-    return K_OK;
+    dealloc_buffer(req);
+    return r;
 }

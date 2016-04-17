@@ -11,7 +11,7 @@
 #include "error_map.h"
 #include "cJSON/cJSON.h"
 
-struct client_config conf;
+typedef void*(*parse_partition_func)(void*, int);
 
 struct buffer *wait_response(int cfd) {
     int rbytes = 0, rc, r, remain, resp_size;
@@ -62,186 +62,278 @@ err_cleanup:
     return NULL;
 }
 
-static cJSON *parse_message_set(struct buffer *response) {
-    int size, key_size, value_size;
-    long offset;
-    char *key, *value;
-    cJSON *messages, *message_obj;
+static struct messageset* alloc_messageset(int cap) {
+    struct messageset *msg_set;
 
-    messages = cJSON_CreateArray();
-    while(!is_buffer_eof(response)) {
-        if (get_buffer_unread(response) < MSG_OVERHEAD) {
-            skip_buffer_bytes(response, get_buffer_unread(response));
-            break;
-        }
-        offset = read_int64_buffer(response);
-        size = read_int32_buffer(response); // message size
-        if (get_buffer_unread(response) < size) {
-            skip_buffer_bytes(response, get_buffer_unread(response));
-            break;
-        }
-        message_obj = cJSON_CreateObject();
-        printf("offset:%ld\n", offset);
-        cJSON_AddNumberToObject(message_obj, "offset", offset);
-        cJSON_AddNumberToObject(message_obj, "size", size);
-        skip_buffer_bytes(response, 4 + 1 + 1); //skip crc + magic + attr
-        key_size = read_int32_buffer(response); // key size
-        if (key_size > 0) {
-            key = malloc(key_size + 1);
-            read_raw_string_buffer(response, key, key_size);
-            key[key_size] = '\0';
-            cJSON_AddStringToObject(message_obj, "key", key);
-            free(key);
-        }
-        value_size = read_int32_buffer(response); // value size
-        if (value_size > 0) {
-            value = malloc(value_size + 1);
-            read_raw_string_buffer(response, value, value_size);
-            value[value_size] = '\0';
-            cJSON_AddStringToObject(message_obj, "value", value);
-            free(value);
-        }
-        cJSON_AddItemToArray(messages, message_obj);
-    }
-    return messages;
+    if (cap < 4) cap = 4;
+    msg_set = malloc(sizeof(*msg_set));
+    msg_set->cap = cap;
+    msg_set->used = 0;
+    msg_set->msgs = malloc(cap * sizeof(struct message)); 
+    return msg_set;
 }
 
-void dump_offsets_response(struct buffer *response) {
-    int i, j, k, old_pos, topic_count, part_count;
-    int err_code, part_id, num_offsets;
-    long long offsets;
-    char *topic;
-
-    if (!response) {
-        logger(ERROR, "response is null.");
+static void dealloc_messageset(struct messageset *msg_set) {
+    int i;
+    
+    for (i = 0; i < msg_set->used; i++) {
+        if (msg_set->msgs[i].key) free(msg_set->msgs[i].key);
+        if (msg_set->msgs[i].value) free(msg_set->msgs[i].value);
     }
-    old_pos = get_buffer_pos(response);
-    // corelation id
-    read_int32_buffer(response);
-    topic_count = read_int32_buffer(response);
+    free(msg_set->msgs);
+    free(msg_set);
+}
+
+static int add_message(struct messageset *msg_set, char *key,
+        char *value, int64_t offset) {
+    struct message *msg;
+    if (!msg_set) return 0;
+
+    if (msg_set->used == msg_set->cap) {
+        msg_set->cap *= 2;
+        msg_set->msgs = realloc(msg_set->msgs, msg_set->cap * sizeof(struct message));
+    }
+    msg = &msg_set->msgs[msg_set->used++];
+    msg->key = key;
+    msg->value = value;
+    msg->offset = offset;
+    return 1;
+}
+
+static struct messageset *parse_message_set(struct buffer *resp_buf) {
+    int size, key_size, value_size;
+    long offset;
+    char *key = NULL, *value = NULL;
+    struct messageset *msg_set;
+
+    msg_set = alloc_messageset(4);
+    while(!is_buffer_eof(resp_buf)) {
+        if (get_buffer_unread(resp_buf) < MSG_OVERHEAD) {
+            skip_buffer_bytes(resp_buf, get_buffer_unread(resp_buf));
+            break;
+        }
+        offset = read_int64_buffer(resp_buf);
+        size = read_int32_buffer(resp_buf); // message size
+        if (get_buffer_unread(resp_buf) < size) {
+            skip_buffer_bytes(resp_buf, get_buffer_unread(resp_buf));
+            break;
+        }
+        skip_buffer_bytes(resp_buf, 4 + 1 + 1); //skip crc + magic + attr
+        key_size = read_int32_buffer(resp_buf); // key size
+        if (key_size > 0) {
+            key = malloc(key_size + 1);
+            read_raw_string_buffer(resp_buf, key, key_size);
+            key[key_size] = '\0';
+        }
+        value_size = read_int32_buffer(resp_buf); // value size
+        if (value_size > 0) {
+            value = malloc(value_size + 1);
+            read_raw_string_buffer(resp_buf, value, value_size);
+            value[value_size] = '\0';
+        }
+        // key/value should by freed by messageset
+        add_message(msg_set, key, value, offset);
+    }
+    return msg_set;
+}
+
+static struct response *alloc_response(int topic_count) {
+    struct response *r;
+
+    r = malloc(sizeof(*r) + topic_count * sizeof(struct topic_info));
+    r->topic_count = topic_count;
+    return r;
+}
+
+void dealloc_response(struct response *r, int type) {
+    int i, j;
+    struct topic_info *t_info;
+
+    if (!r) return;
+
+    for (i = 0; i < r->topic_count; i++) {
+        t_info = &r->t_infos[i];
+        if (t_info->name) free(t_info->name);
+        if (!t_info->p_infos) break;
+
+        for (j = 0; j < t_info->part_count; j++) {
+            if (type == FETCH_KEY) {
+                struct fetch_part_info *p_info;
+                p_info = &t_info->p_infos[j];
+                dealloc_messageset(p_info->msg_set);
+            } else if (type == OFFSET_KEY) {
+                struct offsets_part_info *p_info;
+                p_info = &t_info->p_infos[j];
+                free(p_info->offsets);
+            }
+        }
+        free(t_info->p_infos);
+    }
+
+    free(r);
+}
+
+
+void* parse_offsets_part_infos(void *resp_buf, int part_count) {
+    int i, j, offset_count;
+    struct offsets_part_info *p_infos, *p_info;
+
+    p_infos = malloc(part_count * sizeof(struct offsets_part_info));
+    for (i = 0; i < part_count; i++) {
+        p_info = &p_infos[i]; 
+        p_info->part_id = read_int32_buffer(resp_buf); 
+        p_info->err_code = read_int16_buffer(resp_buf); 
+        offset_count = read_int32_buffer(resp_buf); 
+        p_info->offset_count = offset_count;
+        p_info->offsets = malloc(offset_count * sizeof(int64_t));
+        for (j = 0; j < offset_count; j++) {
+            p_info->offsets[j] = read_int64_buffer(resp_buf);
+        }
+    }
+    return p_infos;
+}
+
+void* parse_produce_part_infos(void* resp_buf, int part_count) {
+    int i;
+    struct produce_part_info *p_infos, *p_info;
+
+    resp_buf = (struct buffer *) resp_buf;
+    p_infos = malloc(part_count * sizeof(struct produce_part_info));
+    for (i = 0; i < part_count; i++) {
+        p_info = &p_infos[i];
+        p_info->part_id = read_int32_buffer(resp_buf); 
+        p_info->err_code = read_int16_buffer(resp_buf); 
+        p_info->offset = read_int64_buffer(resp_buf); 
+    }
+    return p_infos;
+}
+
+void *parse_fetch_part_infos(void *resp_buf, int part_count) {
+    int i;
+    struct fetch_part_info *p_infos, *p_info;
+
+    resp_buf = (struct buffer *) resp_buf;
+    p_infos = malloc(part_count * sizeof(struct fetch_part_info));
+    for (i = 0; i < part_count; i++) {
+        p_info = &p_infos[i];
+        p_info->part_id = read_int32_buffer(resp_buf); 
+        p_info->err_code = read_int16_buffer(resp_buf); 
+        p_info->hw = read_int64_buffer(resp_buf);
+        p_info->total_bytes = read_int32_buffer(resp_buf);
+        p_info->msg_set = parse_message_set(resp_buf);
+    }
+    return p_infos;
+}
+
+struct response *parse_response(struct buffer *resp_buf, int type) {
+    int i, topic_count;
+    struct response *r;
+    parse_partition_func func;
+
+    read_int32_buffer(resp_buf); // corelation id
+    topic_count = read_int32_buffer(resp_buf);
+    if (topic_count <= 0) return NULL;
+
+    r = alloc_response(topic_count);
     for (i = 0; i < topic_count; i++) {
-        topic = read_short_string_buffer(response);
-        printf("{ topic: %s, partitions: \n\t[\n", topic);
-        part_count = read_int32_buffer(response);
-        for(j = 0; j < part_count; j++) {
-            part_id = read_int32_buffer(response);
-            err_code = read_int16_buffer(response);
-            num_offsets = read_int32_buffer(response);
-            printf("\t\t{ part_id:%d, err_code:%d, offsets: [", part_id, err_code);
-            for (k = 0; k < num_offsets; k++) {
-                offsets = read_int64_buffer(response);
-                if(k == num_offsets-1) {
-                    printf("%lld", offsets);
+        r->t_infos[i].name = read_short_string_buffer(resp_buf);
+        r->t_infos[i].part_count = read_int32_buffer(resp_buf);
+        if (r->t_infos[i].part_count <= 0) {
+            r->t_infos[i].p_infos = NULL;
+            return r;
+        }
+        switch(type) {
+            case PRODUCE_KEY:
+                func = parse_produce_part_infos;
+                break;
+             case OFFSET_KEY:
+                func = parse_offsets_part_infos;
+                break;
+             case FETCH_KEY:
+                func = parse_fetch_part_infos;
+                break;
+        }
+        r->t_infos[i].p_infos = func(resp_buf, r->t_infos[i].part_count);
+    }
+    return r;
+}
+
+void dump_offsets_response(struct response *r) {
+    int i, j, k;
+    struct topic_info *t_info;
+    struct offsets_part_info *p_info;
+
+    if (!r) {
+        printf("[]\n");
+        return;
+    }
+
+    for (i = 0; i < r->topic_count; i++) {
+        t_info = &r->t_infos[i];
+        printf("{ topic: %s, partitions: \n\t[\n", t_info->name);
+        for (j = 0; j < t_info->part_count; j++) {
+            p_info = &r->t_infos[i].p_infos[j]; 
+            printf("\t\t{ part_id:%d, err_code:%d, offsets: [", 
+                    p_info->part_id, p_info->err_code);
+            for (k = 0; k < p_info->offset_count; k++) {
+                if(k == p_info->offset_count -1) {
+                    printf("%lld", p_info->offsets[k]);
                 } else {
-                    printf("%lld, ", offsets);
+                    printf("%lld, ", p_info->offsets[k]);
                 }
             }
             printf("] }\n");
         }
         printf("\t]\n}\n");
-        free(topic);
     }
-
-    reset_buffer_pos(response, old_pos);
 }
 
-void dump_fetch_response(struct buffer *response) {
-    int i, j, part_count, topic_count;
-    int part_id, err_code, hw, total_bytes, old_pos;
-    char *topic, *json_str;
-    cJSON *root, *topic_obj, *part_obj, *parts, *topics;
-    cJSON *messages_obj;
+void dump_produce_response(struct response *r) {
+    int i, j;
+    struct produce_part_info *p_info;
 
-    if (!response) {
-        logger(ERROR, "response is null.");
+    if (!r) {
+        printf("[]\n");
+        return;
     }
-    old_pos = get_buffer_pos(response);
-    root = cJSON_CreateObject();
-    // corelation id
-    cJSON_AddNumberToObject(root, "corelation_id",read_int32_buffer(response));
-    topics = cJSON_CreateArray();
-    topic_count = read_int32_buffer(response);
-    for (i = 0; i < topic_count; i++) {
-        topic_obj = cJSON_CreateObject(); 
-        topic = read_short_string_buffer(response);
-        cJSON_AddStringToObject(topic_obj, "name", topic);
-        part_count = read_int32_buffer(response);
-        parts = cJSON_CreateArray();
-        for (j = 0; j < part_count; j++) {
-            part_obj = cJSON_CreateObject();
-            part_id = read_int32_buffer(response);
-            err_code = read_int16_buffer(response);
-            hw = read_int64_buffer(response);
-            total_bytes = read_int32_buffer(response);
-            messages_obj = parse_message_set(response);
-            cJSON_AddNumberToObject(part_obj, "err_code", err_code);
-            if (err_code > 0) {
-                cJSON_AddStringToObject(part_obj, "err_msg", err_map[err_code]);
-            }
-            cJSON_AddNumberToObject(part_obj, "part_id", part_id);
-            cJSON_AddNumberToObject(part_obj, "high_water", hw);
-            cJSON_AddNumberToObject(part_obj, "total_bytes", total_bytes);
-            cJSON_AddItemToObject(part_obj, "messages", messages_obj);
-            cJSON_AddItemToArray(parts, part_obj);
+    printf("[\n");
+    for (i = 0; i < r->topic_count; i++) {
+        printf("\t{ name :%s, partitions: [\n", r->t_infos[i].name);
+        for (j = 0; j <  r->t_infos[i].part_count; j++) {
+            p_info =  &r->t_infos[i].p_infos[j];
+            printf("\t\t{part_id: %d, err_code: %d, offset: %lld},\n",
+              p_info->part_id, p_info->err_code, p_info->offset);
         }
-        cJSON_AddItemToObject(topic_obj, "partitions", parts);
-        cJSON_AddItemToArray(topics, topic_obj);
-        free(topic);
+        printf("\t\t]\n\t}\n");
     }
-    cJSON_AddItemToObject(root, "topics", topics);
-    reset_buffer_pos(response, old_pos);
-
-    json_str = cJSON_Print(root);
-    printf("%s\n", json_str);
-    free(json_str);
-    cJSON_Delete(root);
+    printf("]\n");
 }
 
-void dump_produce_response(struct buffer *response) {
-    int i, j, topic_count, part_count;
-    int part_id, err_code, old_pos;
-    int64_t offset;
-    char *topic, *json_str;
-    cJSON *root, *topic_obj, *part_obj, *parts, *topics;
+void dump_fetch_response(struct response *r) {
+    int i, j, k;
+    struct message *msg;
+    struct fetch_part_info *p_info;
 
-    if (!response) {
-        logger(ERROR, "response is null.");
+    if (!r) {
+        printf("[]\n");
+        return;
     }
-    old_pos = get_buffer_pos(response);
-    root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "corelation_id",read_int32_buffer(response));
-    topic_count = read_int32_buffer(response);
-    topics = cJSON_CreateArray();
-    for (i = 0; i < topic_count; i++) {
-        topic_obj = cJSON_CreateObject(); 
-        topic = read_short_string_buffer(response);
-        cJSON_AddStringToObject(topic_obj, "name", topic);
-        part_count = read_int32_buffer(response); 
-        parts = cJSON_CreateArray();
-        for (j = 0; j < part_count; j++) {
-            part_obj = cJSON_CreateObject();
-            part_id = read_int32_buffer(response); 
-            err_code = read_int16_buffer(response);
-            offset = read_int64_buffer(response);
-            cJSON_AddNumberToObject(part_obj, "err_code", err_code);
-            if (err_code > 0) {
-                cJSON_AddStringToObject(part_obj, "err_msg", err_map[err_code]);
+    printf("[\n");
+    for (i = 0; i < r->topic_count; i++) {
+        printf("\t{ name :%s, partitions: [\n", r->t_infos[i].name);
+        for (j = 0; j <  r->t_infos[i].part_count; j++) {
+            p_info =  &r->t_infos[i].p_infos[j];
+            printf("\t\t{part_id: %d, err_code: %d, highwater: %lld},\n",
+              p_info->part_id, p_info->err_code, p_info->hw);
+            for (k = 0; k < p_info->msg_set->used; k++) {
+                msg = &p_info->msg_set->msgs[k];
+                printf("\t\t\t{offset %lld, key: %s, value: %s}\n",
+                   msg->offset, msg->key, msg->value);
             }
-            cJSON_AddNumberToObject(part_obj, "part_id", part_id);
-            cJSON_AddNumberToObject(part_obj, "offset", offset);
-            cJSON_AddItemToArray(parts, part_obj);
         }
-        cJSON_AddItemToObject(topic_obj, "partitions", parts);
-        cJSON_AddItemToArray(topics, topic_obj);
-        free(topic);
+        printf("\t\t]\n\t}\n");
     }
-    cJSON_AddItemToObject(root, "topics", topics);
-    reset_buffer_pos(response, old_pos);
-
-    json_str = cJSON_Print(root);
-    printf("%s\n", json_str);
-    free(json_str);
-    cJSON_Delete(root);
+    printf("]\n");
 }
 
 cJSON *parse_broker_list(struct buffer *resp) {
@@ -317,7 +409,7 @@ cJSON *parse_topic_metadata(struct buffer *resp) {
     return topic_obj;
 }
 
-void dump_metadata(struct buffer *response) {
+void dump_metadata_response(struct buffer *response) {
     int i, metadata_count,old_pos;
     cJSON *root, *topics, *topic_obj;
     char *json_str;

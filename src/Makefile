@@ -17,13 +17,15 @@ $(PROG_NAME): $(objs)
 	gcc -o $(PROG_NAME) $(objs) -lm
 
 buffer.o: buffer.c crc32.h buffer.h
-conn.o: conn.c conn.h
+conn.o: conn.c util.h conn.h
 crc32.o: crc32.c crc32.h
-main.o: main.c conn.h request.h buffer.h main.h metadata.h util.h
+main.o: main.c conn.h request.h response.h buffer.h main.h metadata.h \
+util.h
 metadata.o: metadata.c metadata.h
 request.o: request.c buffer.h util.h request.h response.h metadata.h \
-  main.h conn.h
-response.o: response.c response.h buffer.h metadata.h main.h conn.h
+main.h conn.h
+response.o: response.c response.h buffer.h request.h metadata.h main.h \
+conn.h util.h error_map.h cJSON/cJSON.h
 util.o: util.c util.h
 
 clean:

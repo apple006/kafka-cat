@@ -26,6 +26,11 @@ Usage: ./kafka-cat
     -h help.
 ```
 
+### offset example
+
+```
+$ kafka-cat -b 127.0.0.1:9092 -t test_topic -O
+```
 
 ### metadata fetch example 
 

@@ -7,6 +7,7 @@
 #include <signal.h>
 #include "conn.h"
 #include "request.h"
+#include "response.h"
 #include "buffer.h"
 #include "main.h"
 #include "util.h"
@@ -73,12 +74,13 @@ void sig_handler(int signo)
 
 int main(int argc, char **argv) {
     int ch, part_id = 0, offset = 0, is_consumer = 0, is_producer = 0, is_offsets = 0;
-    int fetch_size = 0, show_usage = 0, ret;
+    int fetch_size = 0, show_usage = 0;
     int ts = -1;
     char *topic = NULL, *key = NULL, *value = NULL, *type;
     char *brokers = NULL;
     char *client_id = NULL;
     char *log_level = NULL;
+    struct response *r;
 
     srand(time(0));
     while((ch = getopt(argc, argv, "b:t:T:c:Cp:Po:Of:k:v:l:h")) != -1) {
@@ -127,28 +129,30 @@ int main(int argc, char **argv) {
         logger(ERROR, "can't catch SIGPIPE.");
     }
     if (fetch_size <= 0) fetch_size = 1024;
+
     TIME_START();
     if (is_consumer) {
-        ret = send_fetch_request(topic, part_id, offset, fetch_size);
+        r = send_fetch_request(topic, part_id, offset, fetch_size);
+        dump_fetch_response(r);
+        dealloc_response(r, FETCH_KEY);
         type = "consumer";
     } else if(is_offsets) {
-        ret = send_offsets_request(topic, part_id, ts, 1);
+        r = send_offsets_request(topic, part_id, ts, 1);
+        dump_offsets_response(r);
+        dealloc_response(r, OFFSET_KEY);
         type = "offsets";
     } else if(is_producer) {
-        ret = send_produce_request(topic, part_id, key, value);
+        r = send_produce_request(topic, part_id, key, value);
+        dump_produce_response(r);
+        dealloc_response(r, PRODUCE_KEY);
         type = "producer";
     } else {
-        ret = send_metadata_request(topic, 1);
+        dump_metadata(topic);
         type = "metadata";
     }
     TIME_END();
     logger(INFO, "Total time cost %lldus in %s requst", TIME_COST(), type);
 
-    if (ret == K_OK) {
-        logger(INFO, "Send request success!\n");
-    } else {
-        logger(INFO, "Send request failed!\n");
-    }
     if (brokers) free(brokers);
     if (topic) free(topic);
     if (key) free(key);

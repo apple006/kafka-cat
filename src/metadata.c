@@ -63,7 +63,6 @@ int update_broker_metadata(struct metadata_cache *cache, int broker_count) {
 
     cache->broker_metas = broker_metas;
     cache->broker_count = broker_count;
-
     return 0;
 }
 
