@@ -199,17 +199,16 @@ int64_t get_newest_offset(const char *topic, int part_id) {
     if (!r || r->topic_count <= 0) goto RET;
     for (i = 0; i < r->topic_count; i++) {
         t_info = &r->t_infos[i];
-        if (strlen(topic) == strlen(t_info->name)
-            && strncmp(topic, t_info->name, strlen(topic)) == 0) {
-            for (j = 0; j < t_info->part_count; j++) {
-                p_info = &t_info->p_infos[j];
-                if (p_info && p_info->part_id == part_id
-                    && p_info->offset_count > 0) {
-                    ret = p_info->offsets[0] - 1;
-                    goto RET;
-                }
+        if (strlen(topic) != strlen(t_info->name)
+                 || strncmp(topic, t_info->name, strlen(topic)) != 0) {
+            continue;
+        }
+        for (j = 0; j < t_info->part_count; j++) {
+            p_info = &t_info->p_infos[j];
+            if (p_info && p_info->part_id == part_id && p_info->offset_count > 0) {
+                ret = p_info->offsets[0] - 1;
+                goto RET;
             }
-            break;
         }
     }
 
