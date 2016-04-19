@@ -110,7 +110,7 @@ static int connect_leader_broker(const char *topic, int part_id) {
 }
 
 static int random_connect_broker() {
-    int port, rand_idx = 0;
+    int port, rand_idx = 0, host_len;
     char *ipport, host[16], *p;
     struct client_config *conf;
 
@@ -122,12 +122,15 @@ static int random_connect_broker() {
     }
     ipport = conf->broker_list[rand_idx];
     p = memchr(ipport, ':', strlen(ipport));
-    memcpy(host, ipport, p - ipport);
-    host[p - ipport] = '\0';
+    if (!p) {
+        logger(INFO, "broker list format error, should be ip:port.");
+        return K_ERR;
+    }
+    host_len = p - ipport >= 15 ? 15 : p-ipport;
+    memcpy(host, ipport, host_len);
     errno = 0;
-    port = atoi(p + 1);
-    if(port <= 0 || errno) {
-        if (port <= 0) {
+    if ((port = atoi(p + 1)) <= 0 || errno) {
+        if (!errno) {
             logger(DEBUG, "random connect error, as port <= 0");
         } else {
             logger(DEBUG, "random connect error, as %s!", strerror(errno));
@@ -149,7 +152,7 @@ int send_metadata_request(const char *topics, int is_dump) {
 
     if (!topics) return K_ERR;
     if ((cfd = random_connect_broker()) <= 0) {
-        logger(DEBUG, "random connect failed");
+        logger(INFO, "random connect failed");
         return K_ERR;
     }
 
