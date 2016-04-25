@@ -75,11 +75,7 @@ void dump_topic_list() {
     curr_topic = cache->topic_metas;
     printf("topics: [\n");
     while (curr_topic) {
-        if (curr_topic->next) {
-            printf("%s,\n", curr_topic->topic);
-        } else { /* last one topic */
-            printf("%s\n", curr_topic->topic);
-        }
+        printf("\t%s\n", curr_topic->topic);
         curr_topic = curr_topic->next;
     }
     printf("]\n");
