@@ -21,11 +21,18 @@ Usage: ./kafka-cat
     -P producer mode.
     -o consumer offset.
     -O fetch offsets.
+    -L show topic list.
     -f consumer fetch size.
     -k produce message key.
     -v produce message value.
     -l loglevel debug, info, warn, error .
     -h help.
+```
+
+### topic list example
+
+```
+$ kafka-cat -b 127.0.0.1:9092 -L
 ```
 
 ### offset example

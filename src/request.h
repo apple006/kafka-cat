@@ -21,6 +21,7 @@ typedef enum {
 } RequestId;
 
 void dump_metadata(const char *topics);
+void dump_topic_list();
 int send_metadata_request(const char *topics, int is_dump);
 struct response *send_offsets_request(const char *topic, int part_id, int64_t timestamp, int max_num_offsets); 
 struct response *send_fetch_request(const char *topic, int part_id, int64_t offset, int fetch_size);

@@ -65,10 +65,31 @@ static struct buffer *alloc_request_buffer(RequestId key) {
     return req_buf;
 }
 
+void dump_topic_list() {
+    struct metadata_cache *cache;
+    struct topic_metadata *curr_topic;
+    // set topic = NULL, will get all topic metedata in broker.
+    send_metadata_request(NULL, 0);
+
+    cache = get_metacache();
+    curr_topic = cache->topic_metas;
+    printf("topics: [\n");
+    while (curr_topic) {
+        if (curr_topic->next) {
+            printf("%s,\n", curr_topic->topic);
+        } else { /* last one topic */
+            printf("%s\n", curr_topic->topic);
+        }
+        curr_topic = curr_topic->next;
+    }
+    printf("]\n");
+}
+
 struct topic_metadata *get_topic_metadata(const char *topic) {
     struct topic_metadata * t_meta;
     struct metadata_cache *cache;
     
+    if (!topic) return NULL;
     cache = get_metacache();
     if ((t_meta = get_topic_metadata_from_cache(cache, topic)) != NULL) {
         return t_meta;
@@ -150,17 +171,20 @@ int send_metadata_request(const char *topics, int is_dump) {
     char **topic_arr;
     struct buffer *req, *meta_resp;
 
-    if (!topics) return K_ERR;
     if ((cfd = random_connect_broker()) <= 0) {
         logger(INFO, "random connect failed");
         return K_ERR;
     }
 
     req = alloc_request_buffer(METADATA_KEY);
-    topic_arr = split_string(topics, strlen(topics), ",", 1, &count);
-    write_int32_buffer(req, count);
-    for (i = 0; i < count; i++) {
-        write_short_string_buffer(req, topic_arr[i], strlen(topic_arr[i])); 
+    if (topics) {
+        topic_arr = split_string(topics, strlen(topics), ",", 1, &count);
+        write_int32_buffer(req, count);
+        for (i = 0; i < count; i++) {
+            write_short_string_buffer(req, topic_arr[i], strlen(topic_arr[i])); 
+        }
+    } else {
+        write_int32_buffer(req, 0);
     }
 
     if (send_request(cfd, req) != K_OK) goto cleanup;
@@ -176,7 +200,7 @@ int send_metadata_request(const char *topics, int is_dump) {
 cleanup:
     close(cfd);
     dealloc_buffer(req);
-    free_split_res(topic_arr, count);
+    if (topics) free_split_res(topic_arr, count);
     return ret;
 }
 

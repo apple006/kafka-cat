@@ -60,6 +60,7 @@ static void usage(const char *prog_name) {
     fprintf(stderr, "\t-P producer mode.\n");
     fprintf(stderr, "\t-o consumer offset.\n");
     fprintf(stderr, "\t-O fetch offsets.\n");
+    fprintf(stderr, "\t-L show topic list.\n");
     fprintf(stderr, "\t-f consumer fetch size.\n");
     fprintf(stderr, "\t-k produce message key.\n");
     fprintf(stderr, "\t-v produce message value.\n");
@@ -73,7 +74,8 @@ void sig_handler(int signo)
 }
 
 int main(int argc, char **argv) {
-    int ch, part_id = 0, offset = -1, is_consumer = 0, is_producer = 0, is_offsets = 0;
+    int ch, part_id = 0, offset = -1;
+    int is_topic_list = 0, is_consumer = 0, is_producer = 0, is_offsets = 0;
     int fetch_size = 0, show_usage = 0;
     int ts = -1;
     char *topic = NULL, *key = NULL, *value = NULL, *type;
@@ -83,7 +85,7 @@ int main(int argc, char **argv) {
     struct response *r;
 
     srand(time(0));
-    while((ch = getopt(argc, argv, "b:t:T:c:Cp:Po:Of:k:v:l:h")) != -1) {
+    while((ch = getopt(argc, argv, "b:t:T:c:Cp:Po:Of:k:v:l:Lh")) != -1) {
         switch(ch) {
             case 'b': brokers = strdup(optarg); break;
             case 't': topic = strdup(optarg); break;
@@ -98,6 +100,7 @@ int main(int argc, char **argv) {
             case 'k': key = strdup(optarg); break;
             case 'v': value = strdup(optarg); break;
             case 'l': log_level = strdup(optarg); break;
+            case 'L': is_topic_list = 1; break;
             case 'h': show_usage = 1; break;
         }
     }
@@ -109,7 +112,7 @@ int main(int argc, char **argv) {
     if (!brokers) {
         logger(ERROR, "You shoud use -b to assign broker list.\n");
     }
-    if(!topic) {
+    if(!topic && !is_topic_list) {
         logger(ERROR, "You shoud use -t to assign topic.\n");
     }
     if (is_producer && !value) {
@@ -146,6 +149,9 @@ int main(int argc, char **argv) {
         dump_produce_response(r);
         dealloc_response(r, PRODUCE_KEY);
         type = "producer";
+    } else if(is_topic_list) {
+        dump_topic_list();
+        type = "topic_list";
     } else {
         dump_metadata(topic);
         type = "metadata";

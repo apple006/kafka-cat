@@ -442,6 +442,8 @@ void parse_and_store_metadata(struct buffer *response) {
     struct broker_metadata *b_meta;
     struct metadata_cache *cache;
 
+    if (!response) return;
+
     old_pos = get_buffer_pos(response);
     read_int32_buffer(response); // ignore correlation id
     broker_count = read_int32_buffer(response);
