@@ -49,12 +49,21 @@ struct response {
     struct topic_info t_infos[0];
 };
 
+struct metadata_response {
+    int broker_count;
+    int topic_count;
+    struct broker_metadata *b_metas;
+    struct topic_metadata **t_metas;
+};
+
 struct buffer *wait_response(int cfd);
 void parse_and_store_metadata(struct buffer *response);
 struct response *parse_response(struct buffer *resp_buf, int type); 
+struct metadata_response *parse_metadata_response(struct buffer *resp_buf); 
+void dealloc_metadata_response(struct metadata_response *r);
 void dealloc_response(struct response *r, int type); 
-void dump_metadata_response(struct buffer *response);
 void dump_produce_response(struct response *r);
 void dump_offsets_response(struct response *r); 
 void dump_fetch_response(struct response *r);
+void dump_metadata_response(struct metadata_response *r);
 #endif

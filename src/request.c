@@ -66,33 +66,46 @@ static struct buffer *alloc_request_buffer(RequestId key) {
 }
 
 void dump_topic_list() {
-    struct metadata_cache *cache;
-    struct topic_metadata *curr_topic;
+    int i;
+    struct metadata_response *r;
     // set topic = NULL, will get all topic metedata in broker.
-    send_metadata_request(NULL, 0);
+    r = send_metadata_request(NULL);
+    if (!r) return;
 
-    cache = get_metacache();
-    curr_topic = cache->topic_metas;
     printf("topics: [\n");
-    while (curr_topic) {
-        printf("\t%s\n", curr_topic->topic);
-        curr_topic = curr_topic->next;
+    for (i = 0; i < r->topic_count; i++) {
+        printf("\t%s\n", r->t_metas[i]->topic);
     }
     printf("]\n");
+    dealloc_metadata_response(r);
 }
 
 struct topic_metadata *get_topic_metadata(const char *topic) {
-    struct topic_metadata * t_meta;
+    int i;
+    struct topic_metadata *t_meta;
     struct metadata_cache *cache;
+    struct metadata_response *r;
     
     if (!topic) return NULL;
     cache = get_metacache();
     if ((t_meta = get_topic_metadata_from_cache(cache, topic)) != NULL) {
         return t_meta;
     }
-    send_metadata_request(topic, 0);
-    t_meta = get_topic_metadata_from_cache(cache, topic);
+    r = send_metadata_request(topic);
+    if (!r) return NULL;
 
+    // set to cache
+    update_broker_metadata(cache, r->broker_count, r->b_metas);
+
+    t_meta = NULL;
+    for (i = 0; i < r->topic_count; i++) {
+        update_topic_metadata(cache, r->t_metas[i]);
+        if (strlen(topic) == strlen(r->t_metas[i]->topic)
+            && strncmp(topic, r->t_metas[i]->topic, strlen(topic)) == 0) {
+            t_meta = r->t_metas[i];
+        }
+    }
+    dealloc_metadata_response(r);
     return t_meta;
 }
 
@@ -159,17 +172,22 @@ static int random_connect_broker() {
 }
 
 void dump_metadata(const char *topics) {
-    send_metadata_request(topics, 1);
+    struct metadata_response *r;
+
+    r = send_metadata_request(topics);
+    dump_metadata_response(r);
+    dealloc_metadata_response(r);
 }
 
-int send_metadata_request(const char *topics, int is_dump) {
-    int i, count, cfd, ret = K_ERR;
+struct metadata_response *send_metadata_request(const char *topics) {
+    int i, count, cfd;
     char **topic_arr;
     struct buffer *req, *meta_resp;
+    struct metadata_response *r = NULL;
 
     if ((cfd = random_connect_broker()) <= 0) {
         logger(INFO, "random connect failed");
-        return K_ERR;
+        return NULL;
     }
 
     req = alloc_request_buffer(METADATA_KEY);
@@ -185,19 +203,14 @@ int send_metadata_request(const char *topics, int is_dump) {
 
     if (send_request(cfd, req) != K_OK) goto cleanup;
     meta_resp = wait_response(cfd);
-    if (is_dump) {
-        dump_metadata_response(meta_resp); 
-    } else {
-        parse_and_store_metadata(meta_resp);
-    }
+    r = parse_metadata_response(meta_resp);
     dealloc_buffer(meta_resp);
-    ret = K_OK;
 
 cleanup:
     close(cfd);
     dealloc_buffer(req);
     if (topics) free_split_res(topic_arr, count);
-    return ret;
+    return r;
 }
 
 

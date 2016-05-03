@@ -148,6 +148,7 @@ static struct response *alloc_response(int topic_count) {
 void dealloc_response(struct response *r, int type) {
     int i, j;
     struct topic_info *t_info;
+    struct fetch_part_info *p_info;
 
     if (!r) return;
 
@@ -158,7 +159,6 @@ void dealloc_response(struct response *r, int type) {
 
         for (j = 0; j < t_info->part_count; j++) {
             if (type == FETCH_KEY) {
-                struct fetch_part_info *p_info;
                 p_info = &t_info->p_infos[j];
                 dealloc_messageset(p_info->msg_set);
             } else if (type == OFFSET_KEY) {
@@ -409,83 +409,122 @@ cJSON *parse_topic_metadata(struct buffer *resp) {
     return topic_obj;
 }
 
-void dump_metadata_response(struct buffer *response) {
-    int i, metadata_count,old_pos;
-    cJSON *root, *topics, *topic_obj;
-    char *json_str;
-
-    if (!response) {
-        logger(ERROR, "response is null.");
+void dealloc_metadata_response(struct metadata_response *r) {
+    if (!r) return;
+    int i;
+    
+    for (i = 0; i < r->broker_count; i++) {
+        if (r->b_metas[i].host) {
+            free(r->b_metas[i].host);
+        }
     }
-    old_pos = get_buffer_pos(response);
-    root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "corelation_id",read_int32_buffer(response));
-    cJSON_AddItemToObject(root, "brokers", parse_broker_list(response));
-    topics = cJSON_CreateArray();
-    cJSON_AddItemToObject(root, "topics", topics);
-    metadata_count = read_int32_buffer(response);
-    for(i = 0; i < metadata_count; i++) {
-        topic_obj = parse_topic_metadata(response);
-        cJSON_AddItemToArray(topics, topic_obj);
+    for (i = 0; i < r->topic_count; i++) {
+        dealloc_topic_metadata(r->t_metas[i]);
     }
-    reset_buffer_pos(response, old_pos);
-
-    json_str = cJSON_Print(root);
-    printf("%s\n", json_str);
-    free(json_str);
-    cJSON_Delete(root);
+    free(r->b_metas);
+    free(r->t_metas);
+    free(r);
 }
 
-void parse_and_store_metadata(struct buffer *response) {
-    int i, j, k, old_pos, broker_count, metadata_count, part_count, err_code;
+struct metadata_response *parse_metadata_response(struct buffer *resp_buf) {
+    int i, j, k, old_pos, broker_count, topic_count, part_count, err_code;
     char *topic;
-    struct broker_metadata *b_meta;
-    struct metadata_cache *cache;
+    struct broker_metadata *b_metas;
+    struct topic_metadata *t_meta;
+    struct partition_metadata* p_meta;
+    struct metadata_response *r;
 
-    if (!response) return;
+    if (!resp_buf) return NULL;
 
-    old_pos = get_buffer_pos(response);
-    read_int32_buffer(response); // ignore correlation id
-    broker_count = read_int32_buffer(response);
-    cache = get_metacache();
-    update_broker_metadata(cache, broker_count);
+    old_pos = get_buffer_pos(resp_buf);
+    r = malloc(sizeof(*r));
+    if (!r) return NULL;
+    read_int32_buffer(resp_buf); // ignore correlation id
+    broker_count = read_int32_buffer(resp_buf);
+    b_metas = malloc(broker_count * sizeof(struct broker_metadata)); 
     for(i = 0; i < broker_count; i++) {
-        b_meta = &cache->broker_metas[i]; 
-        b_meta->id = read_int32_buffer(response);
-        b_meta->host = read_short_string_buffer(response);
-        b_meta->port = read_int32_buffer(response);
+        b_metas[i].id = read_int32_buffer(resp_buf);
+        b_metas[i].host = read_short_string_buffer(resp_buf);
+        b_metas[i].port = read_int32_buffer(resp_buf);
     }
+    r->broker_count = broker_count;
+    r->b_metas = b_metas;
 
-    metadata_count = read_int32_buffer(response);
-    for(i = 0; i < metadata_count; i++) {
-        err_code = read_int16_buffer(response);
-        topic = read_short_string_buffer(response);
-        part_count = read_int32_buffer(response);
-        if (part_count == 0) continue;
-        delete_topic_metadata_from_cache(cache, topic);
-        struct topic_metadata *t_meta;
-        struct partition_metadata* p_meta;
-        t_meta = add_topic_metadata_to_cache(cache, topic, part_count);
+    topic_count = read_int32_buffer(resp_buf);
+    r->topic_count = topic_count;
+    r->t_metas = calloc(topic_count, sizeof(void*));
+    if (!r->t_metas) return NULL;
+    for(i = 0; i < topic_count; i++) {
+        err_code = read_int16_buffer(resp_buf);
+        topic = read_short_string_buffer(resp_buf);
+        part_count = read_int32_buffer(resp_buf);
+        if (part_count == 0) {
+            free(topic);
+            continue;
+        }
+        t_meta = alloc_topic_metadata(part_count);
+        t_meta->topic = strdup(topic);
         for(j = 0; j < part_count; j++) {
             p_meta = alloc_partition_metadata(); 
             t_meta->part_metas[j] = p_meta;
-            err_code = read_int16_buffer(response); 
+            err_code = read_int16_buffer(resp_buf); 
             p_meta->err_code = err_code;
-            p_meta->part_id = read_int32_buffer(response);
-            p_meta->leader_id = read_int32_buffer(response);
-            p_meta->replica_count = read_int32_buffer(response);
+            p_meta->part_id = read_int32_buffer(resp_buf);
+            p_meta->leader_id = read_int32_buffer(resp_buf);
+            p_meta->replica_count = read_int32_buffer(resp_buf);
             p_meta->replicas = malloc(p_meta->replica_count * sizeof(int));
             for (k = 0; k < p_meta->replica_count; k++) {
-                p_meta->replicas[k] = read_int32_buffer(response);
+                p_meta->replicas[k] = read_int32_buffer(resp_buf);
             }
-            p_meta->isr_count = read_int32_buffer(response);
+            p_meta->isr_count = read_int32_buffer(resp_buf);
             p_meta->isr = malloc( p_meta->isr_count * sizeof(int));
             for (k = 0; k < p_meta->isr_count; k++) {
-                p_meta->isr[k] = read_int32_buffer(response);
+                p_meta->isr[k] = read_int32_buffer(resp_buf);
             }
         }
+        r->t_metas[i] = t_meta;
         free(topic);
     }
 
-    reset_buffer_pos(response, old_pos);
+    reset_buffer_pos(resp_buf, old_pos);
+    return r;
+}
+
+static void dump_topic_metadata(struct topic_metadata *t_meta) {
+    int i, j;
+    if (!t_meta) return;
+
+    struct partition_metadata *p_meta;
+
+    printf("{ topic = %s, partitions = %d, info = [\n", t_meta->topic, t_meta->partitions);
+    for ( i = 0; i < t_meta->partitions; i++) {
+        p_meta = t_meta->part_metas[i];
+        printf("[ part_id = %d, leader_id = %d, replicas = [", p_meta->part_id, p_meta->leader_id);
+        for (j = 0; j < p_meta->replica_count; j++) {
+            if (j != p_meta->replica_count - 1) {
+                printf("%d,", p_meta->replicas[j]);
+            } else {
+                printf("%d", p_meta->replicas[j]);
+            }
+        }
+        printf("], isr = ["); 
+        for(j = 0; j < p_meta->isr_count; j++)  {
+            if (j != p_meta->isr_count - 1) {
+                printf("%d,", p_meta->isr[j]);
+            } else {
+                printf("%d", p_meta->isr[j]);
+            }
+        }
+        printf("]\n");
+    }
+    printf("]}\n");
+}
+
+void dump_metadata_response(struct metadata_response *r) {
+    int i;
+
+    if (!r) return;
+    for (i = 0; i < r->topic_count; i++) {
+        dump_topic_metadata(r->t_metas[i]);
+    }
 }

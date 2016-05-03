@@ -98,6 +98,7 @@ int connect_server(char *host, int port) {
     char *ip;
     
     TIME_START();
+    if (!host || port <= 0) return -1;
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         logger(DEBUG, "make socket() [%s:%d] error!", host, port);
         return -1;

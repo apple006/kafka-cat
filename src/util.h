@@ -20,6 +20,7 @@ do { \
 
 #define TIME_COST() ((_tv_end.tv_sec - _tv_start.tv_sec) * 1000000 + (_tv_end.tv_usec - _tv_start.tv_usec))
  
+#define TYPE_CONVERT(type, p) ((type)((void *)p))
 
 enum LEVEL {
     DEBUG = 1,
