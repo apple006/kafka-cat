@@ -129,7 +129,7 @@ struct topic_metadata *alloc_topic_metadata(int partitions) {
 
     t_meta->topic = NULL; 
     t_meta->partitions = partitions;
-    t_meta->part_metas = malloc(partitions * sizeof(struct partition_metadata*));
+    t_meta->part_metas = malloc(partitions * sizeof(void *));
     if (!t_meta->part_metas) {
         free(t_meta);
         return NULL;
@@ -145,10 +145,12 @@ void dealloc_topic_metadata(struct topic_metadata *t_meta) {
 
     if (!t_meta) return;
     if (t_meta->topic) free(t_meta->topic);
-    for (i = 0; i < t_meta->partitions; i++) {
-        dealloc_partition_metadata(t_meta->part_metas[i]);
+    if (t_meta->part_metas) {
+        for (i = 0; i < t_meta->partitions; i++) {
+            dealloc_partition_metadata(t_meta->part_metas[i]);
+        }
+        free(t_meta->part_metas);
     }
-    if (t_meta->part_metas) free(t_meta->part_metas);
     free(t_meta);
 }
 
@@ -175,11 +177,11 @@ int update_topic_metadata(struct metadata_cache *cache, struct topic_metadata *t
     int i, isr_count, replica_count;
     struct topic_metadata *new_meta;
 
+    if (!cache || !t_meta) return -1;
+
     delete_topic_metadata_from_cache(cache, t_meta->topic);
     new_meta = add_topic_metadata_to_cache(cache, t_meta->topic, t_meta->partitions);
-    new_meta->part_metas= malloc(t_meta->partitions * sizeof(void*));
-    if (!new_meta->part_metas) goto cleanup; 
-
+    if (!new_meta) goto cleanup;
     for (i = 0; i < t_meta->partitions; i++) {
         new_meta->part_metas[i] = alloc_partition_metadata();
         new_meta->part_metas[i]->err_code = t_meta->part_metas[i]->err_code;
@@ -189,12 +191,16 @@ int update_topic_metadata(struct metadata_cache *cache, struct topic_metadata *t
         new_meta->part_metas[i]->isr_count = isr_count;
         replica_count = t_meta->part_metas[i]->replica_count;
         new_meta->part_metas[i]->replica_count = replica_count;
-        new_meta->part_metas[i]->isr = malloc(isr_count * sizeof(int));
-        if (!new_meta->part_metas[i]->isr) goto cleanup; 
-        new_meta->part_metas[i]->replicas = malloc(replica_count * sizeof(int));
-        if (!new_meta->part_metas[i]->replicas) {
-            free(new_meta->part_metas[i]->isr);
-            goto cleanup;
+        if (isr_count > 0) {
+            new_meta->part_metas[i]->isr = malloc(isr_count * sizeof(int));
+            if (!new_meta->part_metas[i]->isr) goto cleanup; 
+        }
+        if (replica_count > 0) {
+            new_meta->part_metas[i]->replicas = malloc(replica_count * sizeof(int));
+            if (!new_meta->part_metas[i]->replicas) {
+                free(new_meta->part_metas[i]->isr);
+                goto cleanup;
+            }
         }
 
         memcpy(new_meta->part_metas[i]->isr, t_meta->part_metas[i]->isr, isr_count);
