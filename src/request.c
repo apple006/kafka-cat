@@ -101,11 +101,9 @@ struct topic_metadata *get_topic_metadata(const char *topic) {
     for (i = 0; i < r->topic_count; i++) {
         if (!r->t_metas[i]) continue;
         update_topic_metadata(cache, r->t_metas[i]);
-        if (strlen(topic) == strlen(r->t_metas[i]->topic)
-            && strncmp(topic, r->t_metas[i]->topic, strlen(topic)) == 0) {
-            t_meta = r->t_metas[i];
-        }
     }
+
+    t_meta = get_topic_metadata_from_cache(cache, topic);
     dealloc_metadata_response(r);
     return t_meta;
 }

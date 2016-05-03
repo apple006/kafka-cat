@@ -203,8 +203,8 @@ int update_topic_metadata(struct metadata_cache *cache, struct topic_metadata *t
             }
         }
 
-        memcpy(new_meta->part_metas[i]->isr, t_meta->part_metas[i]->isr, isr_count);
-        memcpy(new_meta->part_metas[i]->replicas, t_meta->part_metas[i]->replicas, replica_count);
+        memcpy(new_meta->part_metas[i]->isr, t_meta->part_metas[i]->isr, isr_count * sizeof(int));
+        memcpy(new_meta->part_metas[i]->replicas, t_meta->part_metas[i]->replicas, replica_count * sizeof(int));
     }
     return 0;
 
