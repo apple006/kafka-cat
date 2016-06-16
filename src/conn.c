@@ -108,6 +108,7 @@ int connect_server(char *host, int port) {
     } else {
         ip = strdup(host);
     }
+    if (!ip) return -1;
     memset(&srv_addr, 0, sizeof(struct sockaddr_in));
     srv_addr.sin_family = AF_INET;
     srv_addr.sin_port = htons(port);
