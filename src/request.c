@@ -109,7 +109,7 @@ struct topic_metadata *get_topic_metadata(const char *topic) {
 }
 
 static int connect_leader_broker(const char *topic, int part_id) {
-    int leader_id;
+    int i, leader_id = -1;
     struct topic_metadata *t_meta;
     struct broker_metadata *b_meta;
     struct metadata_cache *cache;
@@ -124,7 +124,11 @@ static int connect_leader_broker(const char *topic, int part_id) {
         logger(DEBUG, "Topic metadata not found."); 
         return K_ERR;
     }
-    leader_id = t_meta->part_metas[part_id]->leader_id;
+    for (i = 0; i < t_meta->partitions; i++) {
+        if (t_meta->part_metas[i]->part_id == part_id) {
+            leader_id = t_meta->part_metas[i]->leader_id;
+        }
+    }
     if (leader_id < 0) {
         logger(DEBUG, "leader id not found."); 
         return K_ERR;
