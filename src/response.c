@@ -264,7 +264,7 @@ void dump_offsets_response(struct response *r) {
     struct offsets_part_info *p_info;
 
     if (!r) {
-        printf("[]\n");
+        logger(INFO, "fetch offset failed.");
         return;
     }
 
@@ -293,7 +293,7 @@ void dump_produce_response(struct response *r) {
     struct produce_part_info *p_info;
 
     if (!r) {
-        printf("[]\n");
+        logger(INFO, "produce failed.");
         return;
     }
     printf("[\n");
@@ -315,7 +315,7 @@ void dump_fetch_response(struct response *r) {
     struct fetch_part_info *p_info;
 
     if (!r) {
-        printf("[]\n");
+        logger(INFO, "fetch message failed.");
         return;
     }
     printf("[\n");
@@ -523,7 +523,10 @@ static void dump_topic_metadata(struct topic_metadata *t_meta) {
 void dump_metadata_response(struct metadata_response *r) {
     int i;
 
-    if (!r) return;
+    if (!r) {
+        logger(INFO, "dump metadata failed.");
+        return;
+    }
     for (i = 0; i < r->topic_count; i++) {
         dump_topic_metadata(r->t_metas[i]);
     }

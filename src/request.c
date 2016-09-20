@@ -70,7 +70,10 @@ void dump_topic_list() {
     struct metadata_response *r;
     // set topic = NULL, will get all topic metedata in broker.
     r = send_metadata_request(NULL);
-    if (!r) return;
+    if (!r) {
+        logger(INFO, "dump topic failed.");
+        return;
+    }
 
     printf("topics: [\n");
     for (i = 0; i < r->topic_count; i++) {
@@ -109,7 +112,7 @@ struct topic_metadata *get_topic_metadata(const char *topic) {
 }
 
 static int connect_leader_broker(const char *topic, int part_id) {
-    int i, leader_id = -1;
+    int i, leader_id = -1, rc;
     struct topic_metadata *t_meta;
     struct broker_metadata *b_meta;
     struct metadata_cache *cache;
@@ -139,7 +142,11 @@ static int connect_leader_broker(const char *topic, int part_id) {
         return K_ERR;
     }
 
-    return connect_server(b_meta->host, b_meta->port);
+    rc = connect_server(b_meta->host, b_meta->port);
+    if (rc < 0) {
+        logger(WARN, "connect to leader %s-%d failed.", b_meta->host, b_meta->port); 
+    }
+    return rc;
 }
 
 static int random_connect_broker() {
