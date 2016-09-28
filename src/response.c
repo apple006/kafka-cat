@@ -84,8 +84,8 @@ static void dealloc_messageset(struct messageset *msg_set) {
     free(msg_set);
 }
 
-static int add_message(struct messageset *msg_set, char *key,
-        char *value, int64_t offset) {
+static int add_message(struct messageset *msg_set, char *key, int key_size,
+        char *value, int value_size, int64_t offset) {
     struct message *msg;
     if (!msg_set) return 0;
 
@@ -95,7 +95,9 @@ static int add_message(struct messageset *msg_set, char *key,
     }
     msg = &msg_set->msgs[msg_set->used++];
     msg->key = key;
+    msg->key_size = key_size;
     msg->value = value;
+    msg->value_size = value_size;
     msg->offset = offset;
     return 1;
 }
@@ -132,7 +134,7 @@ static struct messageset *parse_message_set(struct buffer *resp_buf) {
             value[value_size] = '\0';
         }
         // key/value should by freed by messageset
-        add_message(msg_set, key, value, offset);
+        add_message(msg_set, key, key_size, value, value_size, offset);
     }
     return msg_set;
 }
@@ -327,8 +329,8 @@ void dump_fetch_response(struct response *r) {
               p_info->part_id, p_info->err_code, p_info->hw);
             for (k = 0; k < p_info->msg_set->used; k++) {
                 msg = &p_info->msg_set->msgs[k];
-                printf("\t\t\t{offset %lld, key: %s, value: %s}\n",
-                   msg->offset, msg->key, msg->value);
+                printf("\t\t\t{offset %lld, key: %s, key_size: %d, value: %s, value_size: %d}\n",
+                   msg->offset, msg->key, msg->key_size, msg->value, msg->value_size);
             }
         }
         printf("\t\t]\n\t}\n");

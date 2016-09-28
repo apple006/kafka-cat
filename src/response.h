@@ -8,7 +8,9 @@
 struct message {
     int64_t offset;
     char *key;
+    int key_size;
     char *value;
+    int value_size;
 };
 
 struct messageset {
