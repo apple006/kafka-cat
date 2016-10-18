@@ -168,6 +168,7 @@ static int random_connect_broker() {
     }
     host_len = p - ipport >= 15 ? 15 : p-ipport;
     memcpy(host, ipport, host_len);
+    host[host_len] = '\0';
     errno = 0;
     if ((port = atoi(p + 1)) <= 0 || errno) {
         if (!errno) {
