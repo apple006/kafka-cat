@@ -82,9 +82,11 @@ int64_t read_int64_buffer(struct buffer *buf) {
     assert(buf->pos + 8 <= buf->used);
 
     for (i = 0; i < 7; i++) {
-        i64 |= (uint8_t)buf->data[buf->pos++] << ((7-i)*8);
+        // NOTE: << may trans uint8_t to int, and int trans int to int64 may cause troube
+        // when highest bit is 1
+        i64 |= (int64_t)(uint8_t)buf->data[buf->pos++] << ((7-i)*8);
     }
-    i64 |= (uint8_t)buf->data[buf->pos++] & 0xff;
+    i64 |= (int64_t)(uint8_t)buf->data[buf->pos++] & 0xff;
     return i64;
 }
 
