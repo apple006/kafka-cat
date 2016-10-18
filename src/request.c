@@ -237,7 +237,8 @@ static struct buffer *gen_message_buffer(const char *key, const char *value) {
 }
 
 int64_t get_newest_offset(const char *topic, int part_id) {
-    int i, j, ret = 0;
+    int i, j;
+    int64_t ret = 0;
     struct response *r;
     struct topic_info *t_info;
     struct offsets_part_info *p_info = NULL;
