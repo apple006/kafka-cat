@@ -150,8 +150,8 @@ static int connect_leader_broker(const char *topic, int part_id) {
 }
 
 static int random_connect_broker() {
-    int port, rand_idx = 0, host_len;
-    char *ipport, host[16], *p;
+    int port, rand_idx = 0, host_len, ret;
+    char *ipport, *host, *p;
     struct client_config *conf;
 
     conf = get_conf();
@@ -166,7 +166,8 @@ static int random_connect_broker() {
         logger(INFO, "broker list format error, should be ip:port.");
         return K_ERR;
     }
-    host_len = p - ipport >= 15 ? 15 : p-ipport;
+    host_len = p-ipport;
+    host = malloc(host_len + 1);
     memcpy(host, ipport, host_len);
     host[host_len] = '\0';
     errno = 0;
@@ -176,10 +177,12 @@ static int random_connect_broker() {
         } else {
             logger(DEBUG, "random connect error, as %s!", strerror(errno));
         }
+        free(host);
         return K_ERR;
     }
-
-    return connect_server(host, port);
+    ret = connect_server(host, port);
+    free(host);
+    return ret;
 }
 
 void dump_metadata(const char *topics) {
